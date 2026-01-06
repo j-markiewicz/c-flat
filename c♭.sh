@@ -24,6 +24,13 @@ function log {
 	fi
 }
 
+# Print the contents of $2 to stderr if -v/--verbose was passed at least $1 times
+function log_file {
+	if [[ $verbose -ge $1 ]]; then
+		perl -pwe 's/^/        | /mg; s/\t/    /g; s/\n*$/\n/' < "$2"
+	fi
+}
+
 if [[ $(getopt -T > /dev/null; echo "$?") -ne 4 ]]; then
 	echo 'c♭: compiler error: non-linux `getopt` detected' >&2
 	fail
@@ -60,14 +67,14 @@ while [[ $# -gt 0 ]]; do
 	esac
 done
 
-log 5 "verbose=$verbose"
-log 5 "use_gcc=$use_gcc"
-log 5 "output=$output"
-log 5 "libroot=$libroot"
-log 5 "gccroot=$gccroot"
-log 5 "print_dir=$print_dir"
-log 5 "assemble=$assemble"
-log 5 "link=$link"
+log 6 "verbose=$verbose"
+log 6 "use_gcc=$use_gcc"
+log 6 "output=$output"
+log 6 "libroot=$libroot"
+log 6 "gccroot=$gccroot"
+log 6 "print_dir=$print_dir"
+log 6 "assemble=$assemble"
+log 6 "link=$link"
 
 if [[ $# -eq 0 ]]; then
 	echo "c♭: compiler error: no input files" >&2
@@ -93,27 +100,40 @@ workdir="$(mktemp -d)"
 if $print_dir; then
 	echo "c♭: working in directory: $workdir"
 else
-	log 3 "working in directory: $workdir"
 	trap "rm -r $workdir" EXIT
 fi
 
 for source in "$@"; do
 	log 1 "c♭: compiling $source"
+	file=$(printf "$source" | base64 -w0 | tr '/+' '_-' | tr -d '=')
+	log 6 "    file=$file"
+	log 5 "    input ($source):"
+	log_file 5 "$source"
+
 	log 2 "    lexing $source"
-    perl ./c♭-lex.pl < "$source" > "$workdir/$source.tokenstream" || fail
+    perl ./c♭-lex.pl < "$source" > "$workdir/$file.tokenstream" || fail
+	log 5 "    output ($workdir/$file.tokenstream):"
+	log_file 5 "$workdir/$file.tokenstream"
 
 	log 2 "    parsing $source"
-    perl ./c♭-parse.pl < "$workdir/$source.tokenstream" > "$workdir/$source.ast" || fail
+    perl ./c♭-parse.pl < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
+	log 5 "    output ($workdir/$file.ast):"
+	log_file 5 "$workdir/$file.ast"
 
 	log 2 "    lowering $source"
-    perl ./c♭-lower.pl < "$workdir/$source.ast" > "$workdir/$source.ir" || fail
+    perl ./c♭-lower.pl < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
+	log 5 "    output ($workdir/$file.ir):"
+	log_file 5 "$workdir/$file.ir"
 
 	log 2 "    codegenning $source"
-    bash ./c♭-codegen.sh < "$workdir/$source.ir" > "$workdir/$source.S" || fail
+    bash ./c♭-codegen.sh < "$workdir/$file.ir" > "$workdir/$file.S" || fail
+	log 5 "    output ($workdir/$file.S):"
+	log_file 5 "$workdir/$file.S"
 
 	if $assemble && ! $use_gcc; then
 		log 2 "    assembling $source"
-		as --64 -O3 "$workdir/$source.S" -o "$workdir/$source.o" || fail
+		as --64 -O3 "$workdir/$file.S" -o "$workdir/$file.o" || fail
+		log 5 "    output ($workdir/$file.o)"
 	fi
 done
 
@@ -132,7 +152,8 @@ if $use_gcc; then
 	echo -n "-o '$output'" >> "$workdir/gcc.flags"
 
 	log 3 "    calling 'gcc @$workdir/gcc.flags'"
-	log 4 "    with '$workdir/gcc.flags': $(cat $workdir/gcc.flags)"
+	log 4 "    flags ($workdir/gcc.flags):"
+	log_file 4 "$workdir/gcc.flags"
 
 	gcc "@$workdir/gcc.flags" || fail
 elif $link; then
@@ -148,7 +169,8 @@ elif $link; then
 	echo -n "-o '$output'" >> "$workdir/ld.flags"
 
 	log 3 "    calling 'ld @$workdir/ld.flags'"
-	log 4 "    with '$workdir/ld.flags': $(cat $workdir/ld.flags)"
+	log 4 "    flags ($workdir/ld.flags):"
+	log_file 4 "$workdir/ld.flags"
 
 	ld "@$workdir/ld.flags" || fail
 fi
