@@ -1,0 +1,11 @@
+// From libc
+int puts(char* s);
+
+/*
+Print a greeting
+*/
+int main() {
+	puts("Hello, World!");
+
+	return 0;
+}
