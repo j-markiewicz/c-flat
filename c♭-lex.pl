@@ -25,7 +25,7 @@ sub unescape {
 #  All potentially problematic characters are escaped
 sub escape {
 	my $s = shift;
-	$s =~ s/([^ !#-&(-[\]-~])/"\\x".ord($1)/ge;
+	$s =~ s/([^ !#-&(-[\]-~])/"\\x" . sprintf("%02x", (ord($1)))/ge;
 	$s
 }
 

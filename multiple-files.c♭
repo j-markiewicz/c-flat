@@ -1,0 +1,35 @@
+// From libc
+int printf(char* s, int d1, int d2, int d3);
+
+// From math.c♭
+int one();
+int two();
+int add(int a, int b);
+int sub(int a, int b);
+int mul(int a, int b);
+int div(int a, int b);
+int rem(int a, int b);
+
+int main() {
+	int a = one();
+	int b = two();
+
+	int x = add(a, b);
+	printf("%d + %d = %d\n", a, b, x);
+
+	int y = sub(5, x);
+	printf("%d - %d = %d\n", 5, x, y);
+
+	int old_x = x;
+	x = mul(y, x);
+	printf("%d * %d = %d\n", y, old_x, x);
+	
+	y = div(36, x);
+	printf("%d / %d = %d\n", 36, x, y);
+	
+	int old_y = y;
+	y = rem(y, 2);
+	printf("%d %% %d = %d\n", old_y, 2, y);
+
+	return 0;
+}

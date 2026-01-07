@@ -107,8 +107,8 @@ function set_var {
 	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
 }
 
-# call NAME discard [TYPE KIND SOURCE]
-function call_discard {
+# call NAME void [TYPE KIND SOURCE]
+function call_void {
 	i=0
 	type=''
 	kind=''
@@ -120,9 +120,9 @@ function call_discard {
 		else
 			regs=(${arg_regs[$type]})
 			case "$kind" in
-				var) echo $'\t'"mov${suffix[$type]} $arg(%rsp), %${regs[$i]}"; break;;
-				const) echo $'\t'"mov${suffix[$type]} \$$arg, %${regs[$i]}"; break;;
-				symbol) echo $'\t'"lea${suffix[$type]} .L$arg(%rip), %${regs[$i]}"; break;;
+				var) echo $'\t'"mov${suffix[$type]} $arg(%rsp), %${regs[$i]}";;
+				const) echo $'\t'"mov${suffix[$type]} \$$arg, %${regs[$i]}";;
+				symbol) echo $'\t'"lea${suffix[$type]} .L$arg(%rip), %${regs[$i]}";;
 				*) fail "$line";;
 			esac
 			(( i += 1 ))
@@ -136,10 +136,9 @@ function call_discard {
 
 # call NAME TYPE DESTINATION [TYPE KIND SOURCE]
 function call {
-	type="$2"
-	dest="$3"
-	call_discard "$1" "$4"
-	echo $'\t'"mov${suffix[$type]} %${ret_reg[$type]}, $dest(%rsp)"
+	store=$'\t'"mov${suffix[$2]} %${ret_reg[$2]}, $3(%rsp)"
+	call_void "$1" "$4"
+	echo "$store"
 }
 
 # add TYPE DESTINATION SOURCE_A SOURCE_B
@@ -215,8 +214,8 @@ while read -r line; do
 		set_symbol "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ var\ ([[:graph:]]+)$ ]]; then
 		set_var "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ discard((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
-		call_discard "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ void((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
+		call_void "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ ([[:graph:]]+)\ ([[:digit:]]+)((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
 		call "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^add\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then

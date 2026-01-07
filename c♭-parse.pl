@@ -8,6 +8,7 @@ sub parse_identifier;
 sub parse_signature;
 sub parse_block;
 sub parse_statement;
+sub parse_value;
 sub parse_expression;
 
 # Fail parsing with an error message describing what was expected
@@ -40,14 +41,14 @@ sub parse_item {
 			say "\t" . $statement;
 		}
 	} elsif (@body and @sig) {
-		say "fn_def $name $type ", join(",", @sig);
+		say "fn_def $name $type ", join(" ", @sig);
 		for my $statement (@body) {
 			say "\t" . $statement;
 		}
 	} elsif (not @body and not @sig) {
 		say "fn_decl $name $type";
 	} elsif (not @body and @sig) {
-		say "fn_decl $name $type ", join(",", @sig);
+		say "fn_decl $name $type ", join(" ", @sig);
 	} else {
 		fail "item";
 	}
@@ -124,21 +125,20 @@ sub parse_block {
 sub parse_statement {
 	my $statement = "";
 
-	if (s/^identifier (.+)\npunctuation \(\n//) {
-		$statement .= "call $1 discard";
-		while (1) {
-			if (not length) { fail "not EOF"; }
-			$statement .= " " . parse_expression;
-			if (s/^punctuation \)\n//) {
-				last;
-			} elsif (not s/^punctuation ,\n//) {
-				fail ", or )";
-			}
-		}
+	if (s/^keyword return\n(?=punctuation ;\n)//) {
+		$statement = "return void";
 	} elsif (s/^keyword return\n//) {
-		$statement .= "return " . parse_expression;
+		$statement = "return " . parse_value;
+	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation =\n//) {
+		$statement = "variable $1 $2 " . parse_expression;
+	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\n//) {
+		$statement = "variable $1 $2 undefined";
+	} elsif (s/^identifier (\w+)\npunctuation =\n//) {
+		$statement = "assign $1 " . parse_expression;
+	} elsif (s/^punctuation \*\nidentifier (\w+)\npunctuation =\n//) {
+		$statement = "deref_assign $1 " . parse_expression;
 	} else {
-		fail "a statement";
+		$statement = "expression " . parse_expression;
 	}
 
 	if (not s/^punctuation ;\n//) {
@@ -148,9 +148,9 @@ sub parse_statement {
 	return $statement;
 }
 
-# Parse an expression from $_
-# Returns the parsed expression in a braced string
-sub parse_expression {
+# Parse a value (constant, string, or identifier) from $_
+# Returns the parsed value in a parenthesised string
+sub parse_value {
 	if (s/^constant (.+)\n//) {
 		return "(constant $1)";
 	} elsif (s/^string (.+)\n//) {
@@ -158,6 +158,62 @@ sub parse_expression {
 	} elsif (s/^identifier (.+)\n//) {
 		return "(identifier $1)";
 	} else {
-		fail "an expression";
+		fail "a value";
+	}
+}
+
+# Parse an expression (a value, a call, or a binary or unary operation) from $_
+# Returns the parsed expression in a braced string
+sub parse_expression {
+	my %bin_ops = (
+		'+' => 'add',
+		'-' => 'sub',
+		'*' => 'mul',
+		'/' => 'div',
+		'%' => 'rem',
+		'^' => 'xor',
+		'&' => 'and',
+		'|' => 'or',
+		'&&' => 'logical_and',
+		'||' => 'logical_or',
+		'<' => 'lt',
+		'<=' => 'le',
+		'==' => 'eq',
+		'=>' => 'ge',
+		'>' => 'gt'
+	);
+
+	my %un_ops = (
+		'!' => 'not',
+		'~' => 'inv',
+		'-' => 'neg',
+		'+' => 'pos',
+		'*' => 'deref',
+		'&' => 'addr'
+	);
+
+	if (s/^identifier (\w+)\npunctuation \(\n//) {
+		my $expression = "{call $1";
+
+		while (1) {
+			if (not length) { fail "not EOF"; }
+			$expression .= " " . parse_value unless /^punctuation \)\n/;
+			if (s/^punctuation \)\n//) {
+				last;
+			} elsif (not s/^punctuation ,\n//) {
+				fail ", or )";
+			}
+		}
+
+		return $expression . "}";
+	} elsif (/^(constant|string|identifier) (.+)\npunctuation ([+\-\*\/%^&|]|&&|\|\||[<>]|[<>=]=)\n(constant|string|identifier) (.+)\n/) {
+		my $expression = "{binary " . $bin_ops{$3} . " " . parse_value . " ";
+		s/^punctuation (.+)\n//;
+		$expression .= parse_value . "}";
+		return $expression;
+	} elsif (s/^punctuation ([!~\-+\*&])\n//) {
+		return "{unary " . $un_ops{$1} . " " . parse_value . "}";
+	} else {
+		return "{value " . parse_value . "}";
 	}
 }

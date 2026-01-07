@@ -1,0 +1,38 @@
+int one() {
+	return 1;
+}
+
+int add(int a, int b);
+int two() {
+	int n = one();
+	one();
+	n;
+	n = add(n, n);
+	return n;
+}
+
+int add(int a, int b) {
+	int res;
+	res = a + b;
+	return res;
+}
+
+int sub(int a, int b) {
+	int res = a - b;
+	return res;
+}
+
+int mul(int a, int b) {
+	a = a * b;
+	return a;
+}
+
+int div(int a, int b) {
+	int res = a / b;
+	return res;
+}
+
+int rem(int a, int b) {
+	int res = a % b;
+	return res;
+}
