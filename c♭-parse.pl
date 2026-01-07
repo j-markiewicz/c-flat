@@ -33,21 +33,21 @@ sub parse_item {
 	my $type = parse_type;
 	my $name = parse_identifier;
 	my @sig = parse_signature;
-	my @body = parse_block;
+	my $body = parse_block;
 
-	if (@body and not @sig) {
+	if (defined $body and not @sig) {
 		say "fn_def $name $type";
-		for my $statement (@body) {
+		for my $statement (@$body) {
 			say "\t" . $statement;
 		}
-	} elsif (@body and @sig) {
+	} elsif (defined $body and @sig) {
 		say "fn_def $name $type ", join(" ", @sig);
-		for my $statement (@body) {
+		for my $statement (@$body) {
 			say "\t" . $statement;
 		}
-	} elsif (not @body and not @sig) {
+	} elsif (not defined $body and not @sig) {
 		say "fn_decl $name $type";
-	} elsif (not @body and @sig) {
+	} elsif (not defined $body and @sig) {
 		say "fn_decl $name $type ", join(" ", @sig);
 	} else {
 		fail "item";
@@ -108,13 +108,13 @@ sub parse_block {
 	my @statements;
 
 	if (s/^punctuation ;\n//) {
-		return @statements;
+		return;
 	} elsif (s/^punctuation \{\n//) {
 		while (not s/^punctuation \}\n//) {
 			if (not length) { fail "not EOF"; }
 			push @statements, parse_statement;
 		}
-		return @statements;
+		return \@statements;
 	} else {
 		fail "; or a block";
 	}
