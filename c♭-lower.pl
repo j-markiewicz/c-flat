@@ -241,5 +241,6 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 		}
 	}
 
+	say "\treturn void" if $return eq "void";
 	say "\tabort";
 }
