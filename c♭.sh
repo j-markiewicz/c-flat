@@ -109,14 +109,14 @@ fi
 
 if $link && ! $use_gcc && [ ! -d "$gccroot" ]; then
 	echo "c♭: compiler error: GCC runtime libraries not found - is gcc installed?" >&2
-	echo "    c♭ needs libraries like crtbegin.o from gcc when linking" >&2
+	echo "    c♭ needs libraries like crtbeginS.o from gcc when linking" >&2
 	echo "    use --gccroot to specify their location (usually /usr/lib/gcc/x86_64-linux-gnu/<version>)" >&2
 	fail
 fi
 
 if $link && ! $use_gcc && [ ! -d "$libroot" ]; then
 	echo "c♭: compiler error: C libraries not found - is gcc installed?" >&2
-	echo "    c♭ needs libraries like crt1.o from gcc when linking" >&2
+	echo "    c♭ needs libraries like Scrt1.o from gcc when linking" >&2
 	echo "    use --libroot to specify their location (usually /usr/lib/x86_64-linux-gnu)" >&2
 	fail
 fi
@@ -167,7 +167,7 @@ if $use_gcc; then
 	log 2 "c♭: assembling and linking"
 
 	find "$workdir" -name '*.S' -printf "'%p' " > "$workdir/gcc.flags"
-	echo -n "-O3 -fPIE -no-pie -z noexecstack " >> "$workdir/gcc.flags"
+	echo -n "-O3 -fPIE -pie -z noexecstack " >> "$workdir/gcc.flags"
 
 	if ! $assemble; then
 		echo -n "-S " >> "$workdir/gcc.flags"
@@ -186,12 +186,12 @@ elif $link; then
 	log 2 "c♭: linking"
 
 	echo -n "-O3 --build-id --eh-frame-hdr -m elf_x86_64 --hash-style gnu --as-needed " > "$workdir/ld.flags"
-	echo -n "-dynamic-linker /lib64/ld-linux-x86-64.so.2 -z noexecstack " >> "$workdir/ld.flags"
-	echo -n "'$libroot/crt1.o' '$libroot/crti.o' '$gccroot/crtbegin.o' " >> "$workdir/ld.flags"
-	echo -n "'-L$gccroot' '-L$libroot' -L/usr/lib -L/lib/x86_64-linux-gnu -L/lib/ -L/usr/lib/ " >> "$workdir/ld.flags"
+	echo -n "-dynamic-linker /lib64/ld-linux-x86-64.so.2 -z noexecstack -pie " >> "$workdir/ld.flags"
+	echo -n "'$libroot/Scrt1.o' '$libroot/crti.o' '$gccroot/crtbeginS.o' " >> "$workdir/ld.flags"
+	echo -n "'-L$gccroot' '-L$libroot' -L/usr/lib -L/lib/x86_64-linux-gnu -L/lib " >> "$workdir/ld.flags"
 	find "$workdir" -name '*.o' -printf "'%p' " >> "$workdir/ld.flags"
 	echo -n "-lgcc -lgcc_s -lc -lgcc -lgcc_s " >> "$workdir/ld.flags"
-	echo -n "'$gccroot/crtend.o' '$libroot/crtn.o' " >> "$workdir/ld.flags"
+	echo -n "'$gccroot/crtendS.o' '$libroot/crtn.o' " >> "$workdir/ld.flags"
 	echo -n "-o '$output'" >> "$workdir/ld.flags"
 
 	log 3 "    calling 'ld @$workdir/ld.flags'"

@@ -36,18 +36,18 @@ function symbol {
 
 # string "STRING"
 function string {
-	echo "$1:"
+	echo ".L$1:"
 	echo $'\t'".asciz \"$2\""
 }
 
 # function NAME STACK_SIZE RETURN_TYPE [ARGUMENT_TYPE ARGUMENT_POSITION]
 function func {
-	# For function calls, align the top of the stack to a multiple of 16
-	# (on entry, it's 8 more than a multiple of 16)
-	stack_size=$(( ($2 + 7) / 16 * 16 + 8 ))
+	stack_size=$(( ($2 + 15) / 16 * 16 ))
 	echo ".global $1"
 	echo "$1:"
-	echo $'\t'"sub \$$stack_size, %rsp"
+	echo $'\t'"pushq %rbp"
+	echo $'\t'"movq %rsp, %rbp"
+	if [[ $stack_size -gt 0 ]]; then echo $'\t'"sub \$$stack_size, %rsp"; fi
 	i=0
 	type=''
 	for arg in $4; do
@@ -67,23 +67,38 @@ function abort {
 	echo $'\t'"ud2"
 }
 
-# return TYPE symbol/const NAME/VALUE
+# return TYPE const VALUE
 function return_const {
-	echo $'\t'"mov${suffix[$1]} \$$3, %${ret_reg[$1]}"
-	echo $'\t'"add \$$stack_size, %rsp"
+	echo $'\t'"mov${suffix[$1]} \$$2, %${ret_reg[$1]}"
+	if [[ $stack_size -gt 0 ]]; then echo $'\t'"add \$$stack_size, %rsp"; fi
+	echo $'\t'"popq %rbp"
+	echo $'\t'"ret"
+}
+
+# return TYPE symbol VALUE
+function return_symbol {
+	echo $'\t'"lea${suffix[$1]} .L$2(%rip), %${ret_reg[$1]}"
+	if [[ $stack_size -gt 0 ]]; then echo $'\t'"add \$$stack_size, %rsp"; fi
+	echo $'\t'"popq %rbp"
 	echo $'\t'"ret"
 }
 
 # return TYPE var SOURCE
 function return_var {
 	echo $'\t'"mov${suffix[$1]} $2(%rsp), %${ret_reg[$1]}"
-	echo $'\t'"add \$$stack_size, %rsp"
+	if [[ $stack_size -gt 0 ]]; then echo $'\t'"add \$$stack_size, %rsp"; fi
+	echo $'\t'"popq %rbp"
 	echo $'\t'"ret"
 }
 
-# set TYPE DESTINATION symbol/const NAME/VALUE
+# set TYPE DESTINATION const VALUE
 function set_const {
-	echo $'\t'"mov${suffix[$1]} \$$4, $2(%rsp)"
+	echo $'\t'"mov${suffix[$1]} \$$3, $2(%rsp)"
+}
+
+# set TYPE DESTINATION symbol NAME
+function set_symbol {
+	echo $'\t'"lea${suffix[$1]} .L$3(%rip), $2(%rsp)"
 }
 
 # set TYPE DESTINATION var SOURCE
@@ -106,7 +121,8 @@ function call_discard {
 			regs=(${arg_regs[$type]})
 			case "$kind" in
 				var) echo $'\t'"mov${suffix[$type]} $arg(%rsp), %${regs[$i]}"; break;;
-				symbol | const) echo $'\t'"mov${suffix[$type]} \$$arg, %${regs[$i]}"; break;;
+				const) echo $'\t'"mov${suffix[$type]} \$$arg, %${regs[$i]}"; break;;
+				symbol) echo $'\t'"lea${suffix[$type]} .L$arg(%rip), %${regs[$i]}"; break;;
 				*) fail "$line";;
 			esac
 			(( i += 1 ))
@@ -114,6 +130,7 @@ function call_discard {
 			kind=''
 		fi
 	done
+	echo $'\t'"xor %rax, %rax"
 	echo $'\t'"call $1"
 }
 
@@ -160,6 +177,21 @@ function div {
 	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, $2(%rsp)"
 }
 
+# rem TYPE DESTINATION SOURCE_A SOURCE_B
+function rem {
+	declare -rA rem_reg=([char]=ah [short]=dx [int]=edx [long]=rdx [ptr]=rdx)
+	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${ret_reg[$1]}"
+	case "$1" in
+		char) echo $'\t'"cbtw";;
+		short) echo $'\t'"cwtd";;
+		int) echo $'\t'"cltd";;
+		ptr | long) echo $'\t'"cqto";;
+		*) fail "$line";;
+	esac
+	echo $'\t'"idiv${suffix[$1]} $4(%rsp)"
+	echo $'\t'"mov${suffix[$1]} %${rem_reg[$1]}, $2(%rsp)"
+}
+
 while read -r line; do
 	if [[ "$line" =~ ^symbol\ ([[:graph:]]+)$ ]]; then
 		symbol "${BASH_REMATCH[@]:1}"
@@ -167,14 +199,20 @@ while read -r line; do
 		string "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^function\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)((\ [[:graph:]]+\ [[:digit:]]+)*)$ ]]; then
 		func "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ (symbol|const)\ ([[:graph:]]+)$ ]]; then
+	elif [[ "$line" =~ ^return\ void$ ]]; then
+		return_const "ptr" "0"
+	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ const\ ([[:graph:]]+)$ ]]; then
 		return_const "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ symbol\ ([[:graph:]]+)$ ]]; then
+		return_symbol "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ var\ ([[:graph:]]+)$ ]]; then
 		return_var "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^abort$ ]]; then
 		abort "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ (symbol|const)\ ([[:graph:]]+)$ ]]; then
+	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ const\ ([[:graph:]]+)$ ]]; then
 		set_const "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ symbol\ ([[:graph:]]+)$ ]]; then
+		set_symbol "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ var\ ([[:graph:]]+)$ ]]; then
 		set_var "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ discard((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
@@ -189,6 +227,8 @@ while read -r line; do
 		mul "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^div\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
 		div "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^rem\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
+		rem "${BASH_REMATCH[@]:1}"
 	else
 		fail "$line"
 	fi
