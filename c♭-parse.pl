@@ -131,6 +131,8 @@ sub parse_statement {
 		$statement = "return " . parse_expression;
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation =\n//) {
 		$statement = "variable $1 $2 " . parse_expression;
+	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation \[\nconstant (\d+)\npunctuation \]\n//) {
+		$statement = "array $1 $2 $3";
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\n//) {
 		$statement = "variable $1 $2 undefined";
 	} elsif (s/^identifier (\w+)\npunctuation =\n//) {

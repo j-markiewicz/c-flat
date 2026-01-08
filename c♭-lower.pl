@@ -53,14 +53,16 @@ sub typeof {
 sub alloc {
 	state $sp = 0;
 	my $type = shift;
+	my $amount = shift;
+	$amount = 1 unless defined $amount;
 
 	if ($type eq "reset") {
 		my $size = $sp;
 		$sp = 0;
 		return $size;
 	}
-	
-	my $size = sizeof $type;
+
+	my $size = $amount * sizeof $type;
 	fail "can't allocate 0-sized variable" if $size == 0;
 	while ($sp % $size != 0) {
 		$sp += 1;
@@ -265,10 +267,17 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 	}
 
 	for (@statements) {
-		next if not /^variable (\S+) (\w+)$/;
-		fail "variable '$2' declared multiple times" if exists $var_off{$2};
-		$var_off{$2} = alloc $1;
-		$var_ty{$2} = $1;
+		if (/^variable (\S+) (\w+)$/) {
+			fail "variable '$2' declared multiple times" if exists $var_off{$2};
+			$var_off{$2} = alloc $1;
+			$var_ty{$2} = $1;
+		} elsif (/^array (\S+) (\w+) (\d+)$/) {
+			fail "variable '$2' declared multiple times" if exists $var_off{$2};
+			my $off = alloc $1, $3;
+			$var_off{$2} = alloc "$1*";
+			$var_ty{$2} = "$1*";
+			$_ = "array $2 $off";
+		}
 	}
 
 	assert_signatures_match($previous_declaration, $functions{$name});
@@ -290,13 +299,16 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 			my $value = $3;
 			fail "deref-assigning to undefined variable $dest" unless defined $var_ty{$dest};
 			lower_expression \%functions, \%var_ty, \%var_off, $kind, $value, $var_ty{$dest} =~ s/\*$//r;
-			say "\tstore " . typeof($var_ty{$dest}) . " " . $var_off{$dest};
+			say "\tstore " . typeof($var_ty{$dest} =~ s/\*$//r) . " " . $var_off{$dest};
 		} elsif (/^return void$/) {
 			fail "return without value in function returning $return" if $return ne "void";
 			say "\treturn";
 		} elsif (/^return \{(\w+) ([^\}]*)\}$/) {
 			lower_expression \%functions, \%var_ty, \%var_off, $1, $2, $return;
 			say "\treturn";
+		} elsif (/^array (\w+) (\d+)$/) {
+			say "\taddr ptr $2";
+			say "\tset ptr $var_off{$1}";
 		} elsif (/^variable (\S+) (\w+)$/) {
 			# Already processed
 		} else {

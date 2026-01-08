@@ -1,13 +1,18 @@
 int printf(char* fmt, int d);
 int puts(char* s);
+char* strcpy(char* dest, char* src);
 
 int main() {
-	char* string = "Test";
+	char string[5];
+	strcpy(string, "Test");
 	puts(string);
 
 	char character = *string;
 	char** pointer = &string;
-	*pointer = "tEST";
+	strcpy(string, "test");
+	puts(string);
+
+	*string = character;
 	puts(string);
 
 	int x = 6;
