@@ -14,8 +14,14 @@ declare -rA arg_regs=(
 	[ptr]="rdi rsi rdx rcx r8 r9"
 )
 
-# Return register by type
+# Function return / operation result register names by type
 declare -rA ret_reg=([char]=al [short]=ax [int]=eax [long]=rax [ptr]=rax)
+
+# Second operand register for binary operations
+declare -rA sec_reg=([char]=dl [short]=dx [int]=edx [long]=rdx [ptr]=rdx)
+
+# Scratch register names by type
+declare -rA scratch=([char]=r11b [short]=r11w [int]=r11d [long]=r11 [ptr]=r11)
 
 # Size in bytes of each type
 declare -rA size=([char]=1 [short]=2 [int]=4 [long]=8 [ptr]=8)
@@ -23,11 +29,10 @@ declare -rA size=([char]=1 [short]=2 [int]=4 [long]=8 [ptr]=8)
 # Instruction size suffixes by type
 declare -rA suffix=([char]=b [short]=w [int]=l [long]=q [ptr]=q)
 
-# Scratch register names by type
-declare -rA scratch=([char]=r11b [short]=r11w [int]=r11d [long]=r11 [ptr]=r11)
-
 # Size of the current stack frame
 declare -i stack_size=0
+
+# Codegen functions (comments indicate matching IR statements, arguments in bold):
 
 # symbol NAME
 function symbol {
@@ -67,69 +72,59 @@ function abort {
 	echo $'\t'"ud2"
 }
 
-# return TYPE const VALUE
-function return_const {
-	echo $'\t'"mov${suffix[$1]} \$$2, %${ret_reg[$1]}"
+# return
+function gen_return {
 	if [[ $stack_size -gt 0 ]]; then echo $'\t'"add \$$stack_size, %rsp"; fi
 	echo $'\t'"popq %rbp"
 	echo $'\t'"ret"
 }
 
-# return TYPE symbol VALUE
-function return_symbol {
-	echo $'\t'"lea${suffix[$1]} .L$2(%rip), %${ret_reg[$1]}"
-	if [[ $stack_size -gt 0 ]]; then echo $'\t'"add \$$stack_size, %rsp"; fi
-	echo $'\t'"popq %rbp"
-	echo $'\t'"ret"
+# get REGISTER const TYPE VALUE
+function get_const {
+	if [ "$1" = "a" ]; then
+		echo $'\t'"mov${suffix[$2]} \$$3, %${ret_reg[$2]}"
+	elif [ "$1" = "b" ]; then
+		echo $'\t'"mov${suffix[$2]} \$$3, %${sec_reg[$2]}"
+	else
+		fail "$line"
+	fi
 }
 
-# return TYPE var SOURCE
-function return_var {
-	echo $'\t'"mov${suffix[$1]} $2(%rsp), %${ret_reg[$1]}"
-	if [[ $stack_size -gt 0 ]]; then echo $'\t'"add \$$stack_size, %rsp"; fi
-	echo $'\t'"popq %rbp"
-	echo $'\t'"ret"
+# get REGISTER symbol NAME
+function get_symbol {
+	if [ "$1" = "a" ]; then
+		echo $'\t'"lea${suffix[ptr]} .L$2(%rip), %${ret_reg[ptr]}"
+	elif [ "$1" = "b" ]; then
+		echo $'\t'"lea${suffix[ptr]} .L$2(%rip), %${sec_reg[ptr]}"
+	else
+		fail "$line"
+	fi
 }
 
-# set TYPE DESTINATION const VALUE
-function set_const {
-	echo $'\t'"mov${suffix[$1]} \$$3, $2(%rsp)"
+# get REGISTER var TYPE SOURCE
+function get_var {
+	if [ "$1" = "a" ]; then
+		echo $'\t'"mov${suffix[$2]} $3(%rsp), %${ret_reg[$2]}"
+	elif [ "$1" = "b" ]; then
+		echo $'\t'"mov${suffix[$2]} $3(%rsp), %${sec_reg[$2]}"
+	else
+		fail "$line"
+	fi
 }
 
-# set TYPE DESTINATION symbol NAME
-function set_symbol {
-	echo $'\t'"lea${suffix[$1]} .L$3(%rip), %${scratch[ptr]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[ptr]}, $2(%rsp)"
+# set TYPE DESTINATION
+function gen_set {
+	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, $2(%rsp)"
 }
 
-# set TYPE DESTINATION var SOURCE
-function set_var {
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${scratch[$1]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
-}
-
-# store TYPE DESTINATION SOURCE
+# store TYPE DESTINATION
 function store {
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${ret_reg[$1]}"
 	echo $'\t'"mov${suffix[ptr]} $2(%rsp), %${scratch[ptr]}"
-	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, (%${scratch[$1]})"
+	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, (%${scratch[ptr]})"
 }
 
-# deref TYPE DESTINATION SOURCE
-function deref {
-	echo $'\t'"mov${suffix[ptr]} $3(%rsp), %${scratch[ptr]}"
-	echo $'\t'"mov${suffix[$1]} (%${scratch[ptr]}), %${scratch[$1]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
-}
-
-# addr TYPE DESTINATION SOURCE
-function addr {
-	echo $'\t'"lea${suffix[$1]} $3(%rsp), %${scratch[ptr]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[ptr]}, $2(%rsp)"
-}
-
-# call NAME void [TYPE KIND SOURCE]
-function call_void {
+# call NAME [TYPE KIND SOURCE]
+function call {
 	i=0
 	type=''
 	kind=''
@@ -155,37 +150,64 @@ function call_void {
 	echo $'\t'"call $1"
 }
 
-# call NAME TYPE DESTINATION [TYPE KIND SOURCE]
-function call {
-	store=$'\t'"mov${suffix[$2]} %${ret_reg[$2]}, $3(%rsp)"
-	call_void "$1" "$4"
-	echo "$store"
+# Unary operators (except addr) expect their operand in ret_reg[TYPE] and place
+# their result there as well
+
+# addr TYPE SOURCE
+function addr {
+	echo $'\t'"lea${suffix[ptr]} $2(%rsp), %${ret_reg[ptr]}"
 }
 
-# add TYPE DESTINATION SOURCE_A SOURCE_B
+# deref TYPE
+function deref {
+	echo $'\t'"mov${suffix[$1]} (%${ret_reg[ptr]}), %${ret_reg[$1]}"
+}
+
+# not TYPE
+function not {
+	echo $'\t'"test${suffix[$1]} %${ret_reg[$1]}, %${ret_reg[$1]}"
+	echo $'\t'"setz %${ret_reg[char]}"
+	if [ "$1" != 'char' ]; then 
+		echo $'\t'"movz${suffix[char]}${suffix[$1]} %${ret_reg[char]}, %${ret_reg[$1]}"
+	fi
+}
+
+# inv TYPE
+function inv {
+	echo $'\t'"not${suffix[$1]} %${ret_reg[$1]}"
+}
+
+# neg TYPE
+function neg {
+	echo $'\t'"neg${suffix[$1]} %${ret_reg[$1]}"
+}
+
+# pos TYPE
+function pos {
+	echo $'\t'"xchg${suffix[$1]} %${ret_reg[$1]}, %${ret_reg[$1]}"
+}
+
+# Binary operators expect their operands in ret_reg[TYPE] and sec_reg[TYPE] and
+# place their result in ret_reg[TYPE]
+
+# add TYPE
 function add {
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${scratch[$1]}"
-	echo $'\t'"add${suffix[$1]} $4(%rsp), %${scratch[$1]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
+	echo $'\t'"add${suffix[$1]} %${sec_reg[$1]}, %${ret_reg[$1]}"
 }
 
-# sub TYPE DESTINATION SOURCE_A SOURCE_B
+# sub TYPE
 function sub {
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${scratch[$1]}"
-	echo $'\t'"sub${suffix[$1]} $4(%rsp), %${scratch[$1]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
+	echo $'\t'"sub${suffix[$1]} %${sec_reg[$1]}, %${ret_reg[$1]}"
 }
 
-# mul TYPE DESTINATION SOURCE_A SOURCE_B
+# mul TYPE
 function mul {
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${scratch[$1]}"
-	echo $'\t'"imul${suffix[$1]} $4(%rsp), %${scratch[$1]}"
-	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
+	echo $'\t'"imul${suffix[$1]} %${sec_reg[$1]}, %${ret_reg[$1]}"
 }
 
-# div TYPE DESTINATION SOURCE_A SOURCE_B
+# div TYPE
 function div {
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${ret_reg[$1]}"
+	echo $'\t'"mov${suffix[$1]} %${sec_reg[$1]}, %${scratch[$1]}"
 	case "$1" in
 		char) echo $'\t'"cbtw";;
 		short) echo $'\t'"cwtd";;
@@ -193,14 +215,13 @@ function div {
 		ptr | long) echo $'\t'"cqto";;
 		*) fail "$line";;
 	esac
-	echo $'\t'"idiv${suffix[$1]} $4(%rsp)"
-	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, $2(%rsp)"
+	echo $'\t'"idiv${suffix[$1]} %${scratch[$1]}"
 }
 
-# rem TYPE DESTINATION SOURCE_A SOURCE_B
+# rem TYPE
 function rem {
 	declare -rA rem_reg=([char]=ah [short]=dx [int]=edx [long]=rdx [ptr]=rdx)
-	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${ret_reg[$1]}"
+	echo $'\t'"mov${suffix[$1]} %${sec_reg[$1]}, %${scratch[$1]}"
 	case "$1" in
 		char) echo $'\t'"cbtw";;
 		short) echo $'\t'"cwtd";;
@@ -208,8 +229,73 @@ function rem {
 		ptr | long) echo $'\t'"cqto";;
 		*) fail "$line";;
 	esac
-	echo $'\t'"idiv${suffix[$1]} $4(%rsp)"
-	echo $'\t'"mov${suffix[$1]} %${rem_reg[$1]}, $2(%rsp)"
+	echo $'\t'"idiv${suffix[$1]} %${scratch[$1]}"
+	echo $'\t'"mov${suffix[$1]} %${rem_reg[$1]}, %${ret_reg[$1]}"
+}
+
+# xor TYPE
+function xor {
+	echo $'\t'"xor${suffix[$1]} %${sec_reg[$1]}, %${ret_reg[$1]}"
+}
+
+# and TYPE
+function and {
+	echo $'\t'"and${suffix[$1]} %${sec_reg[$1]}, %${ret_reg[$1]}"
+}
+
+# or TYPE
+function or {
+	echo $'\t'"or${suffix[$1]} %${sec_reg[$1]}, %${ret_reg[$1]}"
+}
+
+# logical_and TYPE
+function logical_and {
+	echo $'\t'"test${suffix[$1]} %${ret_reg[$1]}, %${ret_reg[$1]}"
+	echo $'\t'"setnz %${ret_reg[char]}"
+	echo $'\t'"test${suffix[$1]} %${sec_reg[$1]}, %${sec_reg[$1]}"
+	echo $'\t'"setnz %${sec_reg[char]}"
+	echo $'\t'"and${suffix[char]} %${sec_reg[char]}, %${ret_reg[char]}"
+	if [ "$1" != 'char' ]; then 
+		echo $'\t'"movz${suffix[char]}${suffix[$1]} %${ret_reg[char]}, %${ret_reg[$1]}"
+	fi
+}
+
+# logical_or TYPE
+function logical_or {
+	echo $'\t'"test${suffix[$1]} %${ret_reg[$1]}, %${ret_reg[$1]}"
+	echo $'\t'"setnz %${ret_reg[char]}"
+	echo $'\t'"test${suffix[$1]} %${sec_reg[$1]}, %${sec_reg[$1]}"
+	echo $'\t'"setnz %${sec_reg[char]}"
+	echo $'\t'"or${suffix[char]} %${sec_reg[char]}, %${ret_reg[char]}"
+	if [ "$1" != 'char' ]; then 
+		echo $'\t'"movz${suffix[char]}${suffix[$1]} %${ret_reg[char]}, %${ret_reg[$1]}"
+	fi
+}
+
+# LT/LE/EQ/NE/GE/GT TYPE
+function cmp {
+	declare -rA cmp=([lt]=l [le]=le [eq]=e [ne]=ne [ge]=ge [gt]=g)
+	echo $'\t'"cmp${suffix[$2]} %${sec_reg[$2]}, %${ret_reg[$2]}"
+	echo $'\t'"set${cmp[$1]} %${ret_reg[char]}"
+	if [ "$2" != 'char' ]; then 
+		echo $'\t'"movz${suffix[char]}${suffix[$2]} %${ret_reg[char]}, %${ret_reg[$2]}"
+	fi
+}
+
+# shl TYPE
+function shl {
+	echo $'\t'"mov${suffix[char]} %cl, %${scratch[char]}"
+	echo $'\t'"mov${suffix[char]} %${sec_reg[char]}, %cl"
+	echo $'\t'"sal${suffix[$1]} %cl, %${ret_reg[$1]}"
+	echo $'\t'"mov${suffix[char]} %${scratch[char]}, %cl"
+}
+
+# shr TYPE
+function shr {
+	echo $'\t'"mov${suffix[char]} %cl, %${scratch[char]}"
+	echo $'\t'"mov${suffix[char]} %${sec_reg[char]}, %cl"
+	echo $'\t'"sar${suffix[$1]} %cl, %${ret_reg[$1]}"
+	echo $'\t'"mov${suffix[char]} %${scratch[char]}, %cl"
 }
 
 while read -r line; do
@@ -219,31 +305,29 @@ while read -r line; do
 		string "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^function\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)((\ [[:graph:]]+\ [[:digit:]]+)*)$ ]]; then
 		func "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^return\ void$ ]]; then
-		return_const "ptr" "0"
-	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ const\ ([[:graph:]]+)$ ]]; then
-		return_const "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ symbol\ ([[:graph:]]+)$ ]]; then
-		return_symbol "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^return\ ([[:graph:]]+)\ var\ ([[:graph:]]+)$ ]]; then
-		return_var "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^return$ ]]; then
+		gen_return
 	elif [[ "$line" =~ ^abort$ ]]; then
-		abort "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ const\ ([[:graph:]]+)$ ]]; then
-		set_const "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ symbol\ ([[:graph:]]+)$ ]]; then
-		set_symbol "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ var\ ([[:graph:]]+)$ ]]; then
-		set_var "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^store\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)$ ]]; then
+		abort
+	elif [[ "$line" =~ ^get\ ([[:graph:]]+)\ const\ ([[:graph:]]+)\ ([[:digit:]]+)$ ]]; then
+		get_const "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^get\ ([[:graph:]]+)\ symbol\ ([[:graph:]]+)$ ]]; then
+		get_symbol "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^get\ ([[:graph:]]+)\ var\ ([[:graph:]]+)\ ([[:graph:]]+)$ ]]; then
+		get_var "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)$ ]]; then
+		gen_set "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^store\ ([[:graph:]]+)\ ([[:digit:]]+)$ ]]; then
 		store "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^deref\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)$ ]]; then
-		deref "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^addr\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)$ ]]; then
+	elif [[ "$line" =~ ^addr\ ([[:graph:]]+)\ ([[:digit:]]+)$ ]]; then
 		addr "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ void((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
-		call_void "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ ([[:graph:]]+)\ ([[:digit:]]+)((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
+	elif [[ "$line" =~ ^(deref|not|inv|neg|pos)\ ([[:graph:]]+)$ ]]; then
+		${BASH_REMATCH[1]} "${BASH_REMATCH[@]:2}"
+	elif [[ "$line" =~ ^(lt|le|eq|ne|ge|gt)\ ([[:graph:]]+)$ ]]; then
+		cmp "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^(add|sub|mul|div|rem|xor|and|or|logical_and|logical_or|shl|shr)\ ([[:graph:]]+)$ ]]; then
+		${BASH_REMATCH[1]} "${BASH_REMATCH[@]:2}"
+	elif [[ "$line" =~ ^call\ ([[:graph:]]+)((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
 		call "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^add\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
 		add "${BASH_REMATCH[@]:1}"

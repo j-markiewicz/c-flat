@@ -92,6 +92,113 @@ sub assert_signatures_match {
 	}
 }
 
+# Lower a value expression
+sub lower_value {
+	my $var_ty = shift;
+	my $var_off = shift;
+	my $kind = shift;
+	my $value = shift;
+	my $type = shift;
+	my $register = shift;
+	$register = "a" unless defined $register;
+
+	fail "variable $value not declared at time of use" unless $kind ne "identifier" || defined $var_off->{$value};
+
+	fail "invalid string value at type $type" if $kind eq "string" && $type ne "char*";
+	fail "variable type $var_ty->{$value} does not match expected type $type" if $kind eq "identifier" && $type ne $var_ty->{$value};
+
+	say "\tget $register const " . typeof($type) . " $value" if $kind eq "constant";
+	say "\tget $register symbol $value" if $kind eq "string";
+	say "\tget $register var " . typeof($type) . " $var_off->{$value}" if $kind eq "identifier";
+}
+
+# Lower a function call expression
+sub lower_call {
+	my $functions = shift;
+	my $var_ty = shift;
+	my $var_off = shift;
+	my $name = shift;
+	my $args = shift;
+
+	fail "function $name not declared at time of call" unless defined $functions->{$name};
+	my @sig = @{$functions->{$name}};
+	print "\tcall $name";
+
+	my $i = 2;
+	while ($args =~ s/^ \((string|constant|identifier) (\w+)\)//) {
+		fail "function parameter $2 not declared at time of call" if $1 eq "identifier" && not defined $var_ty->{$2};
+		print " ptr symbol $2" if $1 eq "string";
+		print " " . typeof($sig[$i]) . " const $2" if $1 eq "constant";
+		print " " . typeof($var_ty->{$2}) . " var " . $var_off->{$2} if $1 eq "identifier";
+		$i += 1;
+	}
+
+	if ($args =~ /^$/) {
+		say "";
+	} else {
+		fail "error with function call arguments";
+	}
+}
+
+# Lower an expression
+sub lower_expression {
+	my $functions = shift;
+	my $var_ty = shift;
+	my $var_off = shift;
+	my $kind = shift;
+	my $expr = shift;
+	my $type = shift;
+
+	if ($kind eq "value") {
+		$expr =~ /^\((\w+) (.*)\)$/;
+		my $val_kind = $1;
+		my $value = $2;
+		lower_value $var_ty, $var_off, $val_kind, $value, $type;
+	} elsif ($kind eq "unary") {
+		$expr =~ /^(\w+) \((\w+) (.*)\)$/;
+		my $operation = $1;
+		my $val_kind = $2;
+		my $value = $3;
+
+		if ($operation eq "addr") {
+			fail "can't take address of constant" if $val_kind eq "constant";
+			fail "can't take address of string literal" if $val_kind eq "string";
+			fail "variable type $var_ty->{$value}* does not match expected type $type" if $type ne "$var_ty->{$value}*";
+			say "\taddr " . typeof($var_ty->{$value}) . " " . $var_off->{$value};
+		} elsif ($operation eq "deref") {
+			$type = "$type*" if defined $type;
+			fail "can't dereference constant" if $val_kind eq "constant";
+			fail "can't dereference string literal" if $val_kind eq "string";
+			fail "variable type $var_ty->{$value} does not match expected type $type" if $type ne "$var_ty->{$value}";
+			lower_value $var_ty, $var_off, $val_kind, $value, $type;
+			say "\tderef " . typeof($var_ty->{$value});
+		} else {
+			lower_value $var_ty, $var_off, $val_kind, $value, $type;
+			say "\t$operation " . typeof($type =~ s/\*$//r);
+		}
+	} elsif ($kind eq "binary") {
+		$expr =~ /^(\w+) \((\w+) ([^\)]*)\) \((\w+) ([^\)]*)\)$/;
+		my $operation = $1;
+		my $val_kind_a = $2;
+		my $value_a = $3;
+		my $val_kind_b = $4;
+		my $value_b = $5;
+
+		lower_value $var_ty, $var_off, $val_kind_a, $value_a, $type;
+		lower_value $var_ty, $var_off, $val_kind_b, $value_b, $type, "b";
+		say "\t$operation " . typeof($type =~ s/\*$//r);
+	} elsif ($kind eq "call") {
+		$expr =~ /^(\w+)(.*)$/;
+		my $name = $1;
+		my $args = $2;
+		my $return = $functions->{$name}->[1];
+		fail "function return type $return does not match expected type $type" if defined $type && $return ne $type;
+		lower_call $functions, $var_ty, $var_off, $name, $args;
+	} else {
+		fail "unsupported expression kind '$kind'";
+	}
+}
+
 $_ = do {
 	local $/ = undef;
 	<>
@@ -134,12 +241,6 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 	my $previous_declaration = $functions{$name};
 	$functions{$name} = ["define", $return];
 
-	# `*name = expression;` => `typeof(name) _temp = expression; *name = _temp;`
-	$body =~ s/^\tderef_assign (\w+) (\{.*\})$/do {
-		my $name = namefor "_temp";
-		"\tvariable typeof($1) $name $2\n\tderef_assign $1 $name"
-	}/meg;
-
 	# `type name = expression;` => `type name; name = expression;`
 	$body =~ s/^\tvariable (\S+) (\w+) (\{.*\})$/\tvariable $1 $2 undefined\n\tassign $2 $3/mg;
 	$body =~ s/^\tvariable (\S+) (\w+) undefined$/\tvariable $1 $2/mg;
@@ -165,7 +266,6 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 
 	for (@statements) {
 		next if not /^variable (\S+) (\w+)$/;
-		s/^variable typeof\((\S+)\) (\w+)$/variable $var_ty{$1} $2/ and /^variable (\S+) (\w+)$/;
 		fail "variable '$2' declared multiple times" if exists $var_off{$2};
 		$var_off{$2} = alloc $1;
 		$var_ty{$2} = $1;
@@ -177,83 +277,33 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 	my $frame_size = alloc "reset";
 	say "function $name $frame_size $return$params";
 	for (@statements) {
-		if (s/^expression \{call (\w+)//) {
-			my @sig = @{$functions{$1}};
-			print "\tcall $1 void";
-
-			my $i = 2;
-			while (s/^ \((string|constant|identifier) (\w+)\)//) {
-				print " ptr symbol $2" if $1 eq "string";
-				print " " . typeof($sig[$i]) . " const $2" if $1 eq "constant";
-				print " " . typeof($var_ty{$2}) . " var " . $var_off{$2} if $1 eq "identifier";
-				$i += 1;
-			}
-
-			if (/^\}$/) {
-				say "";
-			} else {
-				fail "error with function call arguments";
-			}
-		} elsif (s/^expression \{(.+)\}//) {
-			# noop
-		} elsif (s/^assign (\w+) \{call (\w+)//) {
-			fail "function $2 not declared at time of call" unless defined $functions{$2};
-			my @sig = @{$functions{$2}};
-			fail "function $2 return type " . $sig[1] . " does not match variable type " . $var_ty{$1} if $sig[1] ne $var_ty{$1};
-			print "\tcall $2 " . typeof($var_ty{$1}) . " " . $var_off{$1};
-
-			my $i = 2;
-			while (s/^ \((string|constant|identifier) (\w+)\)//) {
-				print " ptr symbol $2" if $1 eq "string";
-				print " " . typeof($sig[$i]) . " const $2" if $1 eq "constant";
-				print " " . typeof($var_ty{$2}) . " var " . $var_off{$2} if $1 eq "identifier";
-				$i += 1;
-			}
-
-			if (/^\}$/) {
-				say "";
-			} else {
-				fail "error with function call arguments";
-			}
+		if (/^expression \{(\w+) ([^\}]*)\}$/) {
+			lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
+		} elsif (/^assign (\w+) \{(\w+) ([^\}]*)\}$/) {
+			my $dest = $1;
+			fail "assigning to undefined variable $dest" unless defined $var_ty{$dest};
+			lower_expression \%functions, \%var_ty, \%var_off, $2, $3, $var_ty{$dest};
+			say "\tset " . typeof($var_ty{$dest}) . " " . $var_off{$dest};
+		} elsif (/^deref_assign (\w+) \{(\w+) ([^\}]*)\}$/) {
+			my $dest = $1;
+			my $kind = $2;
+			my $value = $3;
+			fail "deref-assigning to undefined variable $dest" unless defined $var_ty{$dest};
+			lower_expression \%functions, \%var_ty, \%var_off, $kind, $value, $var_ty{$dest} =~ s/\*$//r;
+			say "\tstore " . typeof($var_ty{$dest}) . " " . $var_off{$dest};
 		} elsif (/^return void$/) {
 			fail "return without value in function returning $return" if $return ne "void";
-			say "\treturn void";
-		} elsif (/^return \((string|constant) (\w+)\)$/) {
-			say "\treturn " . typeof($return) . " symbol $2" if $1 eq "string";
-			say "\treturn " . typeof($return) . " const $2" if $1 eq "constant";
-		} elsif (/^return \(identifier (\w+)\)$/) {
-			fail "returned variable type " . $var_ty{$1} . " does not match function return type $return in $name" if $return ne $var_ty{$1};
-			say "\treturn " . typeof($return) . " var " . $var_off{$1};
+			say "\treturn";
+		} elsif (/^return \{(\w+) ([^\}]*)\}$/) {
+			lower_expression \%functions, \%var_ty, \%var_off, $1, $2, $return;
+			say "\treturn";
 		} elsif (/^variable (\S+) (\w+)$/) {
 			# Already processed
-		} elsif (/^assign (\w+) \{value \((constant|string|identifier) (\w+)\)\}$/) {
-			fail "assigning to undefined variable $1" unless defined $var_ty{$1};
-			print "\tset " . typeof($var_ty{$1}) . " " . $var_off{$1} . " ";
-			say "const $3" if $2 eq "constant";
-			say "symbol $3" if $2 eq "string";
-			say "var " . $var_off{$3} if $2 eq "identifier";
-		} elsif (/^assign (\w+) \{unary (\S+) \((constant|string|identifier) (\w+)\)\}$/) {
-			fail "assigning to undefined variable $1" unless defined $var_ty{$1};
-			print "\t$2 " . typeof($var_ty{$1}) . " " . $var_off{$1} . " ";
-			fail "constants in binary operation assignments not supported (yet?)" if $3 eq "constant";
-			fail "strings in binary operation assignments not supported (yet?)" if $3 eq "string";
-			say $var_off{$4} if $3 eq "identifier";
-		} elsif (/^assign (\w+) \{binary (\S+) \((constant|string|identifier) (\w+)\) \((constant|string|identifier) (\w+)\)\}$/) {
-			fail "assigning to undefined variable $1" unless defined $var_ty{$1};
-			print "\t$2 " . typeof($var_ty{$1}) . " " . $var_off{$1} . " ";
-			fail "constants in binary operation assignments not supported (yet?)" if $3 eq "constant";
-			fail "strings in binary operation assignments not supported (yet?)" if $3 eq "string";
-			print $var_off{$4} . " " if $3 eq "identifier";
-			fail "constants in binary operation assignments not supported (yet?)" if $5 eq "constant";
-			fail "strings in binary operation assignments not supported (yet?)" if $5 eq "string";
-			say $var_off{$6} if $5 eq "identifier";
-		} elsif (/^deref_assign (\w+) (\w+)$/) {
-			say "\tstore " . typeof($var_ty{$1}) . " $var_off{$1} $var_off{$2}";
 		} else {
 			fail "error when lowering '$_'";
 		}
 	}
 
-	say "\treturn void" if $return eq "void";
+	say "\treturn" if $return eq "void";
 	say "\tabort";
 }

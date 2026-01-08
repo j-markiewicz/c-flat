@@ -61,7 +61,7 @@ while (length $input) {
 	} elsif ($input =~ s/^"((?:[^"\\\n]|\\0|\\a|\\b|\\f|\\n|\\r|\\t|\\v|\\'|\\"|\\\\|\\\?)*)"$end//) {
 		say "string \"", escape(unescape $1), "\"";
 	# Punctuation (one of [](){}.,&*+-!/%<>;=, a comparison, or a bitwise operator)
-	} elsif ($input =~ s/^([[\]()\{}.,&*+\-!\/%<>;=]|[<>=!]=|[&|]{2})//) {
+	} elsif ($input =~ s/^([<>=!]=|[&|<>]{2}|[&|]|[[\]()\{}.,&*+\-~!\/%<>;=])//) {
 		say "punctuation $1";
 	# Anything else (error)
 	} else {

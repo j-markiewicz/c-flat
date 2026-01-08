@@ -128,7 +128,7 @@ sub parse_statement {
 	if (s/^keyword return\n(?=punctuation ;\n)//) {
 		$statement = "return void";
 	} elsif (s/^keyword return\n//) {
-		$statement = "return " . parse_value;
+		$statement = "return " . parse_expression;
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation =\n//) {
 		$statement = "variable $1 $2 " . parse_expression;
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\n//) {
@@ -179,8 +179,11 @@ sub parse_expression {
 		'<' => 'lt',
 		'<=' => 'le',
 		'==' => 'eq',
-		'=>' => 'ge',
-		'>' => 'gt'
+		'!=' => 'ne',
+		'>=' => 'ge',
+		'>' => 'gt',
+		'<<' => 'shl',
+		'>>' => 'shr'
 	);
 
 	my %un_ops = (
@@ -206,7 +209,7 @@ sub parse_expression {
 		}
 
 		return $expression . "}";
-	} elsif (/^(constant|string|identifier) (.+)\npunctuation ([+\-\*\/%^&|]|&&|\|\||[<>]|[<>=]=)\n(constant|string|identifier) (.+)\n/) {
+	} elsif (/^(constant|string|identifier) (.+)\npunctuation ([<>=!]=|[&|<>]{2}|[&\|*+\-~\/%<>])\n(constant|string|identifier) (.+)\n/) {
 		my $expression = "{binary " . $bin_ops{$3} . " " . parse_value . " ";
 		s/^punctuation (.+)\n//;
 		$expression .= parse_value . "}";

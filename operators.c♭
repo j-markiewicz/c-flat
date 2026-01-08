@@ -1,0 +1,66 @@
+int printf(char* fmt, int d);
+int puts(char* s);
+
+int main() {
+	char* string = "Test";
+	puts(string);
+
+	char character = *string;
+	char** pointer = &string;
+	*pointer = "tEST";
+	puts(string);
+
+	int x = 6;
+	int a = !x;
+	int b = ~x;
+	int c = -x;
+	int d = +x;
+
+	printf("x = %d\n", x);
+	printf("!x = %d\n", a);
+	printf("~x = %d\n", b);
+	printf("-x = %d\n", c);
+	printf("+x = %d\n", d);
+
+	int e = x < 10;
+	int f = x <= 10;
+	int g = x == 10;
+	int h = x >= 10;
+	int i = x > 10;
+	int j = x != 10;
+	int k = x && 10;
+	int l = x || 10;
+
+	printf("x < 10 = %d\n", e);
+	printf("x <= 10 = %d\n", f);
+	printf("x == 10 = %d\n", g);
+	printf("x >= 10 = %d\n", h);
+	printf("x > 10 = %d\n", i);
+	printf("x != 10 = %d\n", j);
+	printf("x && 10 = %d\n", k);
+	printf("x || 10 = %d\n", l);
+
+	int m = x + 10;
+	int n = x - 10;
+	int o = x * 10;
+	int p = x / 10;
+	int q = x % 10;
+
+	printf("x + 10 = %d\n", m);
+	printf("x - 10 = %d\n", n);
+	printf("x * 10 = %d\n", o);
+	printf("x / 10 = %d\n", p);
+	printf("x %% 10 = %d\n", q);
+
+	int r = x & 10;
+	int s = x | 10;
+	int t = x >> 2;
+	int u = x << 2;
+
+	printf("x & 10 = %d\n", r);
+	printf("x | 10 = %d\n", s);
+	printf("x >> 10 = %d\n", t);
+	printf("x << 10 = %d\n", u);
+
+	return 0;
+}
