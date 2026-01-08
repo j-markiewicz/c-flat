@@ -105,7 +105,7 @@ while (s/^fn_decl (\w+) (\S+)(.*)$//m) {
 	my $params = $3;
 	my $previous_declaration = $functions{$name};
 
-	$functions{$name} = [0, $return];
+	$functions{$name} = ["declare", $return];
 	while ($params =~ s/^ (\S+) (\w+)//) {
 		push @{$functions{$name}}, $1;
 	}
@@ -129,9 +129,15 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 	my $named_params = $3;
 	my $body = $4;
 
-	fail "function '$name' defined multiple times" if exists $functions{$name} && ${$functions{$name}}[0] == 1;
+	fail "function '$name' defined multiple times" if exists $functions{$name} && ${$functions{$name}}[0] eq "define";
 	my $previous_declaration = $functions{$name};
-	$functions{$name} = [1, $return];
+	$functions{$name} = ["define", $return];
+
+	# `*name = expression;` => `typeof(name) _temp = expression; *name = _temp;`
+	$body =~ s/^\tderef_assign (\w+) (\{.*\})$/do {
+		my $name = namefor "_temp";
+		"\tvariable typeof($1) $name $2\n\tderef_assign $1 $name"
+	}/meg;
 
 	# `type name = expression;` => `type name; name = expression;`
 	$body =~ s/^\tvariable (\S+) (\w+) (\{.*\})$/\tvariable $1 $2 undefined\n\tassign $2 $3/mg;
@@ -158,6 +164,7 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 
 	for (@statements) {
 		next if not /^variable (\S+) (\w+)$/;
+		s/^variable typeof\((\S+)\) (\w+)$/variable $var_ty{$1} $2/ and /^variable (\S+) (\w+)$/;
 		fail "variable '$2' declared multiple times" if exists $var_off{$2};
 		$var_off{$2} = alloc $1;
 		$var_ty{$2} = $1;
@@ -236,6 +243,8 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 			fail "constants in binary operation assignments not supported (yet?)" if $5 eq "constant";
 			fail "strings in binary operation assignments not supported (yet?)" if $5 eq "string";
 			say $var_off{$6} if $5 eq "identifier";
+		} elsif (/^deref_assign (\w+) (\w+)$/) {
+			say "\tstore " . typeof($var_ty{$1}) . " $var_off{$1} $var_off{$2}";
 		} else {
 			fail "error when lowering '$_'";
 		}

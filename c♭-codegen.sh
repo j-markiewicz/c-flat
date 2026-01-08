@@ -98,13 +98,34 @@ function set_const {
 
 # set TYPE DESTINATION symbol NAME
 function set_symbol {
-	echo $'\t'"lea${suffix[$1]} .L$3(%rip), $2(%rsp)"
+	echo $'\t'"lea${suffix[$1]} .L$3(%rip), %${scratch[ptr]}"
+	echo $'\t'"mov${suffix[$1]} %${scratch[ptr]}, $2(%rsp)"
 }
 
 # set TYPE DESTINATION var SOURCE
 function set_var {
 	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${scratch[$1]}"
 	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
+}
+
+# store TYPE DESTINATION SOURCE
+function store {
+	echo $'\t'"mov${suffix[$1]} $3(%rsp), %${ret_reg[$1]}"
+	echo $'\t'"mov${suffix[ptr]} $2(%rsp), %${scratch[ptr]}"
+	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, (%${scratch[$1]})"
+}
+
+# deref TYPE DESTINATION SOURCE
+function deref {
+	echo $'\t'"mov${suffix[ptr]} $3(%rsp), %${scratch[ptr]}"
+	echo $'\t'"mov${suffix[$1]} (%${scratch[ptr]}), %${scratch[$1]}"
+	echo $'\t'"mov${suffix[$1]} %${scratch[$1]}, $2(%rsp)"
+}
+
+# addr TYPE DESTINATION SOURCE
+function addr {
+	echo $'\t'"lea${suffix[$1]} $3(%rsp), %${scratch[ptr]}"
+	echo $'\t'"mov${suffix[$1]} %${scratch[ptr]}, $2(%rsp)"
 }
 
 # call NAME void [TYPE KIND SOURCE]
@@ -214,6 +235,12 @@ while read -r line; do
 		set_symbol "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^set\ ([[:graph:]]+)\ ([[:digit:]]+)\ var\ ([[:graph:]]+)$ ]]; then
 		set_var "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^store\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)$ ]]; then
+		store "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^deref\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)$ ]]; then
+		deref "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^addr\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:graph:]]+)$ ]]; then
+		addr "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ void((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
 		call_void "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^call\ ([[:graph:]]+)\ ([[:graph:]]+)\ ([[:digit:]]+)((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then

@@ -1,0 +1,14 @@
+int printf(char* fmt, char c, char* p, char** p2);
+
+int main() {
+	char c = 'x';
+	char* p = &c;
+	char** p2 = &p;
+
+	printf("The character '%c' is at %p, and that variable is at %p\n", c, p, p2);
+
+	*p = 'y';
+	printf("The character '%c' is at %p, and that variable is at %p\n", c, p, p2);
+
+	return 0;
+}
