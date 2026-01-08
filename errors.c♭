@@ -1,0 +1,104 @@
+//! Examples of compiler error handling in c♭
+
+//! Some errors have dedicated handling
+
+//* Incompatible function redeclarations
+// int function(short a, long b);
+// void function();
+
+//* Incompatible declaration and definition
+// int function(short a, long b);
+// int function(long a, short b) {
+// 	return 0;
+// }
+
+//* Multiple function definitions
+// int function(short a, long b);
+// int function(short a, long b); // multiple declarations are fine, but ...
+// int function(short a, long b) {
+// 	return 0;
+// }
+// int function(short a, long b) { // multiple definitions aren't, even if identical
+// 	return 0;
+// }
+
+//* Void variables
+// void get_nothing() {}
+// int main() {
+// 	void nothing = get_nothing();
+// }
+
+//* Return/variable type mismatch
+// int one_int() {
+// 	return 1;
+// }
+// int main() {
+// 	char* one = one_int();
+// 	return 0;
+// }
+
+//* Redeclared variables
+// int main() {
+// 	int a = 1;
+// 	int a = 1;
+// }
+
+//* Undefined functions and variables
+// int main() {
+// 	undefined = 5;
+// 	int res = undefined();
+// 	return res;
+// }
+
+//! Some errors are handled as a side-effect of the compiler failing to do something
+
+//* All lexing errors
+// #!/usr/bin/c♭.sh
+
+//* All parsing errors
+// function 123(int variable = 1 + 2);
+
+//! Some errors are handled in the assembler or linker
+
+//* No main function
+// int not_main() {
+// 	return 0;
+// }
+
+//* Duplicate functions in multiple files (compile with `c♭.sh errors.c♭ hello-world.c♭`)
+// int main() {
+// 	return 0;
+// }
+
+//! Some errors are handled with a runtime abort
+
+//* No return in a non-void function
+// int puts(char* s);
+// void nothing() {
+// 	puts("Called nothing()");
+// 	// no return - this is fine, nothing() returns void
+// }
+// int main() {
+// 	puts("Start of main");
+// 	nothing();
+// 	puts("End of main");
+// 	// no return - this compiles, but aborts at runtime
+// }
+// void not_called() {
+// 	puts("This would be printed if main didn't abort or return");
+// }
+
+//! Some errors aren't handled (but the OS will probably do something about them though)
+
+//* Division by 0
+// int main() {
+// 	int zero = 0;
+// 	int res = zero / zero;
+// 	return res;
+// }
+
+//* Infinite recursion
+// int main() {
+// 	int res = main();
+// 	return res;
+// }

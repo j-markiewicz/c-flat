@@ -61,6 +61,7 @@ sub alloc {
 	}
 	
 	my $size = sizeof $type;
+	fail "can't allocate 0-sized variable" if $size == 0;
 	while ($sp % $size != 0) {
 		$sp += 1;
 	}
@@ -226,16 +227,19 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 		} elsif (/^variable (\S+) (\w+)$/) {
 			# Already processed
 		} elsif (/^assign (\w+) \{value \((constant|string|identifier) (\w+)\)\}$/) {
+			fail "assigning to undefined variable $1" unless defined $var_ty{$1};
 			print "\tset " . typeof($var_ty{$1}) . " " . $var_off{$1} . " ";
 			say "const $3" if $2 eq "constant";
 			say "symbol $3" if $2 eq "string";
 			say "var " . $var_off{$3} if $2 eq "identifier";
 		} elsif (/^assign (\w+) \{unary (\S+) \((constant|string|identifier) (\w+)\)\}$/) {
+			fail "assigning to undefined variable $1" unless defined $var_ty{$1};
 			print "\t$2 " . typeof($var_ty{$1}) . " " . $var_off{$1} . " ";
 			fail "constants in binary operation assignments not supported (yet?)" if $3 eq "constant";
 			fail "strings in binary operation assignments not supported (yet?)" if $3 eq "string";
 			say $var_off{$4} if $3 eq "identifier";
 		} elsif (/^assign (\w+) \{binary (\S+) \((constant|string|identifier) (\w+)\) \((constant|string|identifier) (\w+)\)\}$/) {
+			fail "assigning to undefined variable $1" unless defined $var_ty{$1};
 			print "\t$2 " . typeof($var_ty{$1}) . " " . $var_off{$1} . " ";
 			fail "constants in binary operation assignments not supported (yet?)" if $3 eq "constant";
 			fail "strings in binary operation assignments not supported (yet?)" if $3 eq "string";
