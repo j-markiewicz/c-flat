@@ -6,14 +6,14 @@ For usage information, run `./c♭.sh -h`.
 
 ## Examples
 
-The included `.c♭` files contain example programs:
+The included `.c♭` files in `examples/` contain example programs:
 
-- [`hello-world.c♭`](./hello-world.c♭) - the classic
-- [`multiple-files.c♭`](./multiple-files.c♭) and [`math.c♭`](./math.c♭) - compilation with multiple source files, mathematical operations, variables
-- [`fizz-buzz.c♭`](./fizz-buzz.c♭) - while loops and if statements
-- [`operators.c♭`](./operators.c♭) - all (non-pointer-related) c♭ operators
-- [`pointers.c♭`](./pointers.c♭) - example operations on pointers
-- [`errors.c♭`](./errors.c♭) - examples of compiler error handling
+- [`hello-world.c♭`](examples/hello-world.c♭) - the classic
+- [`multiple-files.c♭`](examples/multiple-files.c♭) and [`math.c♭`](examples/math.c♭) - compilation with multiple source files, mathematical operations, variables
+- [`fizz-buzz.c♭`](examples/fizz-buzz.c♭) - while loops and if statements
+- [`operators.c♭`](examples/operators.c♭) - all (non-pointer-related) c♭ operators
+- [`pointers.c♭`](examples/pointers.c♭) - example operations on pointers
+- [`errors.c♭`](examples/errors.c♭) - examples of compiler error handling
 
 ## Language
 
