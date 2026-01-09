@@ -1,6 +1,35 @@
+# Subroutines for lower.pl
+
 use strict;
 use warnings;
 use v5.10;
+
+package lower;
+our $VERSION = '0.1';
+use base 'Exporter';
+our @EXPORT = (
+	'fail',
+	'namefor',
+	'sizeof',
+	'typeof',
+	'alloc',
+	'assert_signatures_match',
+	'lower_value',
+	'lower_call',
+	'lower_expression',
+	'lower_statement'
+);
+
+sub fail;
+sub namefor;
+sub sizeof;
+sub typeof;
+sub alloc;
+sub assert_signatures_match;
+sub lower_value;
+sub lower_call;
+sub lower_expression;
+sub lower_statement;
 
 # Fail lowering with an error message
 sub fail {
@@ -11,8 +40,9 @@ sub fail {
 
 # Return a unique name prefixed with the argument
 sub namefor {
-	state %counters;
 	my $prefix = shift;
+
+	state %counters;
 
 	if (exists $counters{$prefix}) {
 		$counters{$prefix} += 1;
@@ -50,11 +80,13 @@ sub typeof {
 # Allocate a variable of the given type on the stack and return its position
 # If the given type is "reset", this function's state is instead reset,
 # returning the size of the previous stack frame
+# A second parameter can be passed to allocate an array of $2 $1s
 sub alloc {
-	state $sp = 0;
 	my $type = shift;
 	my $amount = shift;
 	$amount = 1 unless defined $amount;
+
+	state $sp = 0;
 
 	if ($type eq "reset") {
 		my $size = $sp;
@@ -220,145 +252,64 @@ sub lower_expression {
 	fail "expression has unknown type";
 }
 
-$_ = do {
-	local $/ = undef;
-	<>
-};
+# Lower a statement
+sub lower_statement {
+	my $statement = shift;
+	my $functions = shift;
+	my $var_off = shift;
+	my $var_ty = shift;
+	my $deferred = shift;
 
-my %functions;
-
-# Lower function declerations
-while (s/^fn_decl (\w+) (\S+)(.*)$//m) {
-	my $name = $1;
-	my $return = $2;
-	my $params = $3;
-	my $previous_declaration = $functions{$name};
-
-	$functions{$name} = ["declare", $return];
-	while ($params =~ s/^ (\S+) (\w+)//) {
-		push @{$functions{$name}}, $1;
+	if (/^expression \{(\w+) ([^\}]*)\}$/) {
+		lower_expression $functions, $var_ty, $var_off, $1, $2;
+	} elsif (/^end$/) {
+		say (pop @$deferred);
+	} elsif (/^while \{(\w+) ([^\}]*)\}$/) {
+		my $start_label = namefor "WHILE_START";
+		my $end_label = namefor "WHILE_END";
+		push @$deferred, "\tgoto $start_label\n\tlabel $end_label";
+		say "\tlabel $start_label";
+		my $type = lower_expression $functions, $var_ty, $var_off, $1, $2;
+		say "\tbranch if false " . typeof($type) . " $end_label";
+	} elsif (/^if \{(\w+) ([^\}]*)\}$/) {
+		my $start_label = namefor "IF_START";
+		my $else_label = namefor "IF_ELSE";
+		my $end_label = namefor "IF_END";
+		push @$deferred, "\tlabel $end_label";
+		push @$deferred, "\tgoto $end_label\n\tlabel $else_label";
+		say "\tlabel $start_label";
+		my $type = lower_expression $functions, $var_ty, $var_off, $1, $2;
+		say "\tbranch if false " . typeof($type) . " $else_label";
+	} elsif (/^assign (\w+) \{(\w+) ([^\}]*)\}$/) {
+		my $dest = $1;
+		fail "assigning to undefined variable $dest" unless defined $var_ty->{$dest};
+		lower_expression $functions, $var_ty, $var_off, $2, $3, $var_ty->{$dest};
+		say "\tset " . typeof($var_ty->{$dest}) . " " . $var_off->{$dest};
+	} elsif (/^deref_assign (\w+) \((constant|identifier) (\w+)\) \{(\w+) ([^\}]*)\}$/) {
+		my $dest = $1;
+		my $off_kind = $2;
+		my $off_value = $3;
+		my $kind = $4;
+		my $value = $5;
+		fail "deref-assigning to undefined variable $dest" unless defined $var_ty->{$dest};
+		lower_expression $functions, $var_ty, $var_off, $kind, $value, $var_ty->{$dest} =~ s/\*$//r;
+		lower_value $var_ty, $var_off, $off_kind, $off_value, "long", "b";
+		my $deref_type = $var_ty->{$dest} =~ s/\*$//r;
+		say "\tstore " . typeof($var_ty->{$dest} =~ s/\*$//r) . " " . $var_off->{$dest};
+	} elsif (/^return void$/) {
+		fail "return without value in function returning $var_ty->{'return'}" if $var_ty->{'return'} ne "void";
+		say "\treturn";
+	} elsif (/^return \{(\w+) ([^\}]*)\}$/) {
+		lower_expression $functions, $var_ty, $var_off, $1, $2, $var_ty->{'return'};
+		say "\treturn";
+	} elsif (/^array (\w+) (\d+)$/) {
+		say "\taddr ptr $2";
+		say "\tset ptr $var_off->{$1}";
+	} elsif (/^variable (\S+) (\w+)$/) {
+		# Already processed
+	} else {
+		fail "error when lowering '$_'";
 	}
-
-	assert_signatures_match($previous_declaration, $functions{$name});
-
-	say "symbol $name";
 }
 
-# Declare strings
-while (s/\(string "(.+)"\)/(string)/) {
-	my $name = namefor "STRING";
-	say "string $name \"$1\"";
-	s/\(string\)/(string $name)/;
-}
-
-# Lower function definitions
-while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
-	my $name = $1;
-	my $return = $2;
-	my $named_params = $3;
-	my $body = $4;
-
-	fail "function '$name' defined multiple times" if exists $functions{$name} && ${$functions{$name}}[0] eq "define";
-	my $previous_declaration = $functions{$name};
-	$functions{$name} = ["define", $return];
-
-	# `type name = expression;` => `type name; name = expression;`
-	$body =~ s/^\tvariable (\S+) (\w+) (\{.*\})$/\tvariable $1 $2 undefined\n\tassign $2 $3/mg;
-	$body =~ s/^\tvariable (\S+) (\w+) undefined$/\tvariable $1 $2/mg;
-
-	# Collect statements
-	my @statements;
-	for (split(/\n/, $body)) {
-		s/^\s|\s$//g;
-		push @statements, $_;
-	}
-
-	# Collect and allocate variables (including parameters)
-	my %var_off;
-	my %var_ty;
-	my $params = "";
-	while ($named_params =~ s/^ (\S+) (\w+)//) {
-		push @{$functions{$name}}, $1;
-		fail "parameter '$2' declared multiple times" if exists $var_off{$2};
-		$var_off{$2} = alloc $1;
-		$var_ty{$2} = $1;
-		$params .= " " . typeof($1) . " " . $var_off{$2};
-	}
-
-	for (@statements) {
-		if (/^variable (\S+) (\w+)$/) {
-			fail "variable '$2' declared multiple times" if exists $var_off{$2};
-			$var_off{$2} = alloc $1;
-			$var_ty{$2} = $1;
-		} elsif (/^array (\S+) (\w+) (\d+)$/) {
-			fail "variable '$2' declared multiple times" if exists $var_off{$2};
-			my $off = alloc $1, $3;
-			$var_off{$2} = alloc "$1*";
-			$var_ty{$2} = "$1*";
-			$_ = "array $2 $off";
-		}
-	}
-
-	assert_signatures_match($previous_declaration, $functions{$name});
-
-	my @deferred;
-
-	# Lower function
-	my $frame_size = alloc "reset";
-	say "function $name $frame_size $return$params";
-	for (@statements) {
-		if (/^expression \{(\w+) ([^\}]*)\}$/) {
-			lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
-		} elsif (/^end$/) {
-			say (pop @deferred);
-		} elsif (/^while \{(\w+) ([^\}]*)\}$/) {
-			my $start_label = namefor "WHILE_START";
-			my $end_label = namefor "WHILE_END";
-			push @deferred, "\tgoto $start_label\n\tlabel $end_label";
-			say "\tlabel $start_label";
-			my $type = lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
-			say "\tbranch if false " . typeof($type) . " $end_label";
-		} elsif (/^if \{(\w+) ([^\}]*)\}$/) {
-			my $start_label = namefor "IF_START";
-			my $else_label = namefor "IF_ELSE";
-			my $end_label = namefor "IF_END";
-			push @deferred, "\tlabel $end_label";
-			push @deferred, "\tgoto $end_label\n\tlabel $else_label";
-			say "\tlabel $start_label";
-			my $type = lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
-			say "\tbranch if false " . typeof($type) . " $else_label";
-		} elsif (/^assign (\w+) \{(\w+) ([^\}]*)\}$/) {
-			my $dest = $1;
-			fail "assigning to undefined variable $dest" unless defined $var_ty{$dest};
-			lower_expression \%functions, \%var_ty, \%var_off, $2, $3, $var_ty{$dest};
-			say "\tset " . typeof($var_ty{$dest}) . " " . $var_off{$dest};
-		} elsif (/^deref_assign (\w+) \((constant|identifier) (\w+)\) \{(\w+) ([^\}]*)\}$/) {
-			my $dest = $1;
-			my $off_kind = $2;
-			my $off_value = $3;
-			my $kind = $4;
-			my $value = $5;
-			fail "deref-assigning to undefined variable $dest" unless defined $var_ty{$dest};
-			lower_expression \%functions, \%var_ty, \%var_off, $kind, $value, $var_ty{$dest} =~ s/\*$//r;
-			lower_value \%var_ty, \%var_off, $off_kind, $off_value, "long", "b";
-			my $deref_type = $var_ty{$dest} =~ s/\*$//r;
-			say "\tstore " . typeof($var_ty{$dest} =~ s/\*$//r) . " " . $var_off{$dest};
-		} elsif (/^return void$/) {
-			fail "return without value in function returning $return" if $return ne "void";
-			say "\treturn";
-		} elsif (/^return \{(\w+) ([^\}]*)\}$/) {
-			lower_expression \%functions, \%var_ty, \%var_off, $1, $2, $return;
-			say "\treturn";
-		} elsif (/^array (\w+) (\d+)$/) {
-			say "\taddr ptr $2";
-			say "\tset ptr $var_off{$1}";
-		} elsif (/^variable (\S+) (\w+)$/) {
-			# Already processed
-		} else {
-			fail "error when lowering '$_'";
-		}
-	}
-
-	say "\treturn" if $return eq "void";
-	say "\tabort";
-}
+1;

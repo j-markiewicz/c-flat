@@ -125,22 +125,22 @@ for source in "$@"; do
 	log_file 5 "$source"
 
 	log 2 "    lexing $source"
-    perl ./c♭-lex.pl < "$source" > "$workdir/$file.tokenstream" || fail
+    perl c♭/lex.pl < "$source" > "$workdir/$file.tokenstream" || fail
 	log 5 "    output ($workdir/$file.tokenstream):"
 	log_file 5 "$workdir/$file.tokenstream"
 
 	log 2 "    parsing $source"
-    perl ./c♭-parse.pl < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
+    perl c♭/parse.pl < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
 	log 5 "    output ($workdir/$file.ast):"
 	log_file 5 "$workdir/$file.ast"
 
 	log 2 "    lowering $source"
-    perl ./c♭-lower.pl < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
+    perl c♭/lower.pl < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
 	log 5 "    output ($workdir/$file.ir):"
 	log_file 5 "$workdir/$file.ir"
 
 	log 2 "    codegenning $source"
-    bash ./c♭-codegen.sh < "$workdir/$file.ir" > "$workdir/$file.S" || fail
+    bash c♭/codegen.sh < "$workdir/$file.ir" > "$workdir/$file.S" || fail
 	log 5 "    output ($workdir/$file.S):"
 	log_file 5 "$workdir/$file.S"
 

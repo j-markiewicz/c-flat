@@ -101,10 +101,10 @@ However, if `--use-gcc` is passed, GCC's defaults are used instead.
 
 The compiler is structured into four separate phases, all controlled by `c♭.sh`:
 
-- `c♭-lex.pl` converts the source input into a stream of tokens (e.g. `identifier main`, `punctuation ;`)
-- `c♭-parse.pl` parses the token stream into an AST
-- `c♭-lower.pl` converts the AST into an assemly-like intermediate representation
-- `c♭-codegen.sh` converts the IR into assembly
+- `c♭/lex.pl` converts the source input into a stream of tokens (e.g. `identifier main`, `punctuation ;`)
+- `c♭/parse.pl` parses the token stream into an AST
+- `c♭/lower.pl` converts the AST into an assemly-like intermediate representation
+- `c♭/codegen.sh` converts the IR into assembly
 
 At the end `c♭.sh` uses either binutils' `as` and `ld` or `gcc` to assemble and link the generated assembly files into an executable.
 
@@ -229,7 +229,7 @@ function main 0 int
 ```
 
 The final phase of compilation is code generation.
-`c♭-codegen.sh` transforms each IR item/statement into its equivalent x86-64 assembly.
+`c♭/codegen.sh` transforms each IR item/statement into its equivalent x86-64 assembly.
 Some IR statements become just one instruction (e.g. `add int` is codegenned as `addl %ecx, %eax`), while some are more complex (e.g. `call`s first set up all arguments and then generate a `call` instruction), and some only generate assembler directives (e.g. `string STRING0 "Hello, World!"` becomes `.LSTRING0: .asciz "Hello, World!"`).
 `function` items move the arguments to the stack on entry so that they behave just like regular variables.
 

@@ -1,7 +1,25 @@
+# Subroutines for parse.pl
+
 use strict;
 use warnings;
 use v5.10;
 
+package parse;
+our $VERSION = '0.1';
+use base 'Exporter';
+our @EXPORT = (
+	'fail',
+	'parse_item',
+	'parse_type',
+	'parse_identifier',
+	'parse_signature',
+	'parse_block',
+	'parse_statement',
+	'parse_value',
+	'parse_expression'
+);
+
+sub fail;
 sub parse_item;
 sub parse_type;
 sub parse_identifier;
@@ -11,20 +29,42 @@ sub parse_statement;
 sub parse_value;
 sub parse_expression;
 
+# c♭ binary operators (expect deref)
+my %bin_ops = (
+	'+' => 'add',
+	'-' => 'sub',
+	'*' => 'mul',
+	'/' => 'div',
+	'%' => 'rem',
+	'^' => 'xor',
+	'&' => 'and',
+	'|' => 'or',
+	'&&' => 'logical_and',
+	'||' => 'logical_or',
+	'<' => 'lt',
+	'<=' => 'le',
+	'==' => 'eq',
+	'!=' => 'ne',
+	'>=' => 'ge',
+	'>' => 'gt',
+	'<<' => 'shl',
+	'>>' => 'shr'
+);
+
+# c♭ unary operators (except deref)
+my %un_ops = (
+	'!' => 'not',
+	'~' => 'inv',
+	'-' => 'neg',
+	'+' => 'pos',
+	'&' => 'addr'
+);
+
 # Fail parsing with an error message describing what was expected
 sub fail {
 	my $expected = shift;
 	say STDERR "c♭: parsing error: expected $expected, got ", s/(^[^\n]{,76}).*/$1/sr;
 	exit 1;
-}
-
-$_ = do {
-	local $/ = undef;
-	<>
-};
-
-while (length) {
-	parse_item;
 }
 
 # Parse an item (a function decleration or definition) from $_
@@ -180,9 +220,7 @@ sub parse_statement {
 		$statements[0] = "expression " . parse_expression;
 	}
 
-	if (not s/^punctuation ;\n//) {
-		fail ";";
-	}
+	fail ";" unless s/^punctuation ;\n//;
 
 	return @statements;
 }
@@ -190,49 +228,15 @@ sub parse_statement {
 # Parse a value (constant, string, or identifier) from $_
 # Returns the parsed value in a parenthesised string
 sub parse_value {
-	if (s/^constant (.+)\n//) {
-		return "(constant $1)";
-	} elsif (s/^string (.+)\n//) {
-		return "(string $1)";
-	} elsif (s/^identifier (.+)\n//) {
-		return "(identifier $1)";
-	} else {
-		fail "a value";
-	}
+	return "(constant $1)" if s/^constant (.+)\n//;
+	return "(string $1)" if s/^string (.+)\n//;
+	return "(identifier $1)" if s/^identifier (.+)\n//;
+	fail "a value";
 }
 
 # Parse an expression (a value, a call, or a binary or unary operation) from $_
 # Returns the parsed expression in a braced string
 sub parse_expression {
-	my %bin_ops = (
-		'+' => 'add',
-		'-' => 'sub',
-		'*' => 'mul',
-		'/' => 'div',
-		'%' => 'rem',
-		'^' => 'xor',
-		'&' => 'and',
-		'|' => 'or',
-		'&&' => 'logical_and',
-		'||' => 'logical_or',
-		'<' => 'lt',
-		'<=' => 'le',
-		'==' => 'eq',
-		'!=' => 'ne',
-		'>=' => 'ge',
-		'>' => 'gt',
-		'<<' => 'shl',
-		'>>' => 'shr'
-	);
-
-	my %un_ops = (
-		'!' => 'not',
-		'~' => 'inv',
-		'-' => 'neg',
-		'+' => 'pos',
-		'&' => 'addr'
-	);
-
 	if (s/^identifier (\w+)\npunctuation \(\n//) {
 		my $expression = "{call $1";
 
@@ -266,3 +270,5 @@ sub parse_expression {
 		return "{value " . parse_value . "}";
 	}
 }
+
+1;
