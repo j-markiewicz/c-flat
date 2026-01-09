@@ -156,6 +156,20 @@ sub lower_expression {
 		my $val_kind = $1;
 		my $value = $2;
 		lower_value $var_ty, $var_off, $val_kind, $value, $type;
+	} elsif ($kind eq "deref") {
+		$expr =~ /^\((\w+) (.*)\) \((\w+) (.*)\)$/;
+		my $off_kind = $1;
+		my $offset = $2;
+		my $val_kind = $3;
+		my $value = $4;
+
+		$type = "$type*" if defined $type;
+		fail "can't dereference constant" if $val_kind eq "constant";
+		fail "can't dereference string literal" if $val_kind eq "string";
+		fail "variable type $var_ty->{$value} does not match expected type $type" if $type ne "$var_ty->{$value}";
+		lower_value $var_ty, $var_off, $val_kind, $value, $type;
+		lower_value $var_ty, $var_off, $off_kind, $offset, "long", "b";
+		say "\tderef " . typeof($var_ty->{$value} =~ s/\*$//r);
 	} elsif ($kind eq "unary") {
 		$expr =~ /^(\w+) \((\w+) (.*)\)$/;
 		my $operation = $1;
@@ -167,13 +181,6 @@ sub lower_expression {
 			fail "can't take address of string literal" if $val_kind eq "string";
 			fail "variable type $var_ty->{$value}* does not match expected type $type" if $type ne "$var_ty->{$value}*";
 			say "\taddr " . typeof($var_ty->{$value}) . " " . $var_off->{$value};
-		} elsif ($operation eq "deref") {
-			$type = "$type*" if defined $type;
-			fail "can't dereference constant" if $val_kind eq "constant";
-			fail "can't dereference string literal" if $val_kind eq "string";
-			fail "variable type $var_ty->{$value} does not match expected type $type" if $type ne "$var_ty->{$value}";
-			lower_value $var_ty, $var_off, $val_kind, $value, $type;
-			say "\tderef " . typeof($var_ty->{$value});
 		} else {
 			lower_value $var_ty, $var_off, $val_kind, $value, $type;
 			say "\t$operation " . typeof($type =~ s/\*$//r);
@@ -293,12 +300,16 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 			fail "assigning to undefined variable $dest" unless defined $var_ty{$dest};
 			lower_expression \%functions, \%var_ty, \%var_off, $2, $3, $var_ty{$dest};
 			say "\tset " . typeof($var_ty{$dest}) . " " . $var_off{$dest};
-		} elsif (/^deref_assign (\w+) \{(\w+) ([^\}]*)\}$/) {
+		} elsif (/^deref_assign (\w+) \((constant|identifier) (\w+)\) \{(\w+) ([^\}]*)\}$/) {
 			my $dest = $1;
-			my $kind = $2;
-			my $value = $3;
+			my $off_kind = $2;
+			my $off_value = $3;
+			my $kind = $4;
+			my $value = $5;
 			fail "deref-assigning to undefined variable $dest" unless defined $var_ty{$dest};
 			lower_expression \%functions, \%var_ty, \%var_off, $kind, $value, $var_ty{$dest} =~ s/\*$//r;
+			lower_value \%var_ty, \%var_off, $off_kind, $off_value, "long", "b";
+			my $deref_type = $var_ty{$dest} =~ s/\*$//r;
 			say "\tstore " . typeof($var_ty{$dest} =~ s/\*$//r) . " " . $var_off{$dest};
 		} elsif (/^return void$/) {
 			fail "return without value in function returning $return" if $return ne "void";

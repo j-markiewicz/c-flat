@@ -120,7 +120,7 @@ function gen_set {
 # store TYPE DESTINATION
 function store {
 	echo $'\t'"mov${suffix[ptr]} $2(%rsp), %${scratch[ptr]}"
-	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, (%${scratch[ptr]})"
+	echo $'\t'"mov${suffix[$1]} %${ret_reg[$1]}, (%${scratch[ptr]}, %${sec_reg[ptr]}, ${size[$1]})"
 }
 
 # call NAME [TYPE KIND SOURCE]
@@ -160,7 +160,7 @@ function addr {
 
 # deref TYPE
 function deref {
-	echo $'\t'"mov${suffix[$1]} (%${ret_reg[ptr]}), %${ret_reg[$1]}"
+	echo $'\t'"mov${suffix[$1]} (%${ret_reg[ptr]}, %${sec_reg[ptr]}, ${size[$1]}), %${ret_reg[$1]}"
 }
 
 # not TYPE

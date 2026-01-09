@@ -13,6 +13,19 @@ int main() {
 	puts(string);
 
 	*string = character;
+	string[1] = 'E';
+	string[2] = 'S';
+	string[3] = character;
+	puts(string);
+
+	char* other_string = "ABCD";
+	string[0] = *other_string;
+	long index = 1;
+	string[1] = other_string[index];
+	index = index + 1;
+	string[index] = other_string[index];
+	index = index + 1;
+	string[index] = other_string[3];
 	puts(string);
 
 	int x = 6;

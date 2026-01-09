@@ -138,7 +138,11 @@ sub parse_statement {
 	} elsif (s/^identifier (\w+)\npunctuation =\n//) {
 		$statement = "assign $1 " . parse_expression;
 	} elsif (s/^punctuation \*\nidentifier (\w+)\npunctuation =\n//) {
-		$statement = "deref_assign $1 " . parse_expression;
+		$statement = "deref_assign $1 (constant 0) " . parse_expression;
+	} elsif (s/^identifier (\w+)\npunctuation \[\n//) {
+		$statement = "deref_assign $1 " . parse_value . " ";
+		fail "]" unless s/^punctuation \]\npunctuation =\n//;
+		$statement .= parse_expression;
 	} else {
 		$statement = "expression " . parse_expression;
 	}
@@ -216,7 +220,15 @@ sub parse_expression {
 		s/^punctuation (.+)\n//;
 		$expression .= parse_value . "}";
 		return $expression;
-	} elsif (s/^punctuation ([!~\-+\*&])\n//) {
+	} elsif (/^(string|identifier) (.+)\npunctuation \[\n(constant|identifier) (.+)\npunctuation \]\n/) {
+		my $operand = parse_value;
+		fail "[" unless s/^punctuation \[\n//;
+		my $expression = "{deref " . parse_value . " $operand}";
+		fail "]" unless s/^punctuation \]\n//;
+		return $expression;
+	} elsif (s/^punctuation \*\n//) {
+		return "{deref (constant 0) " . parse_value . "}";
+	} elsif (s/^punctuation ([!~\-+&])\n//) {
 		return "{unary " . $un_ops{$1} . " " . parse_value . "}";
 	} else {
 		return "{value " . parse_value . "}";
