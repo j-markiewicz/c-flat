@@ -94,7 +94,7 @@ sub assert_signatures_match {
 	}
 }
 
-# Lower a value expression
+# Lower a value expression, returning the type if known
 sub lower_value {
 	my $var_ty = shift;
 	my $var_off = shift;
@@ -102,16 +102,20 @@ sub lower_value {
 	my $value = shift;
 	my $type = shift;
 	my $register = shift;
+	$type = $var_ty->{$value} if $kind eq "identifier" && not defined $type;
+	$type = "char*" if $kind eq "string" && not defined $type;
 	$register = "a" unless defined $register;
 
 	fail "variable $value not declared at time of use" unless $kind ne "identifier" || defined $var_off->{$value};
-
 	fail "invalid string value at type $type" if $kind eq "string" && $type ne "char*";
 	fail "variable type $var_ty->{$value} does not match expected type $type" if $kind eq "identifier" && $type ne $var_ty->{$value};
 
-	say "\tget $register const " . typeof($type) . " $value" if $kind eq "constant";
+	say "\tget $register const " . typeof($type || "long") . " $value" if $kind eq "constant";
 	say "\tget $register symbol $value" if $kind eq "string";
 	say "\tget $register var " . typeof($type) . " $var_off->{$value}" if $kind eq "identifier";
+
+	$type = "int" if $kind eq "constant" && not defined $type;
+	return $type;
 }
 
 # Lower a function call expression
@@ -142,7 +146,7 @@ sub lower_call {
 	}
 }
 
-# Lower an expression
+# Lower an expression, returning its type
 sub lower_expression {
 	my $functions = shift;
 	my $var_ty = shift;
@@ -155,7 +159,7 @@ sub lower_expression {
 		$expr =~ /^\((\w+) (.*)\)$/;
 		my $val_kind = $1;
 		my $value = $2;
-		lower_value $var_ty, $var_off, $val_kind, $value, $type;
+		return lower_value $var_ty, $var_off, $val_kind, $value, $type;
 	} elsif ($kind eq "deref") {
 		$expr =~ /^\((\w+) (.*)\) \((\w+) (.*)\)$/;
 		my $off_kind = $1;
@@ -170,6 +174,7 @@ sub lower_expression {
 		lower_value $var_ty, $var_off, $val_kind, $value, $type;
 		lower_value $var_ty, $var_off, $off_kind, $offset, "long", "b";
 		say "\tderef " . typeof($var_ty->{$value} =~ s/\*$//r);
+		return $var_ty->{$value} =~ s/\*$//r;
 	} elsif ($kind eq "unary") {
 		$expr =~ /^(\w+) \((\w+) (.*)\)$/;
 		my $operation = $1;
@@ -181,9 +186,11 @@ sub lower_expression {
 			fail "can't take address of string literal" if $val_kind eq "string";
 			fail "variable type $var_ty->{$value}* does not match expected type $type" if $type ne "$var_ty->{$value}*";
 			say "\taddr " . typeof($var_ty->{$value}) . " " . $var_off->{$value};
+			return "$var_ty->{$value}*";
 		} else {
-			lower_value $var_ty, $var_off, $val_kind, $value, $type;
-			say "\t$operation " . typeof($type =~ s/\*$//r);
+			my $val_type = lower_value $var_ty, $var_off, $val_kind, $value, $type || "long";
+			say "\t$operation " . typeof($val_type);
+			return $val_type;
 		}
 	} elsif ($kind eq "binary") {
 		$expr =~ /^(\w+) \((\w+) ([^\)]*)\) \((\w+) ([^\)]*)\)$/;
@@ -193,9 +200,11 @@ sub lower_expression {
 		my $val_kind_b = $4;
 		my $value_b = $5;
 
-		lower_value $var_ty, $var_off, $val_kind_a, $value_a, $type;
-		lower_value $var_ty, $var_off, $val_kind_b, $value_b, $type, "b";
-		say "\t$operation " . typeof($type =~ s/\*$//r);
+		my $type_a = lower_value $var_ty, $var_off, $val_kind_a, $value_a, $type;
+		my $type_b = lower_value $var_ty, $var_off, $val_kind_b, $value_b, $type, "b";
+		$type = $type || $type_a || $type_b || "long";
+		say "\t$operation " . typeof($type);
+		return $type;
 	} elsif ($kind eq "call") {
 		$expr =~ /^(\w+)(.*)$/;
 		my $name = $1;
@@ -203,9 +212,12 @@ sub lower_expression {
 		my $return = $functions->{$name}->[1];
 		fail "function return type $return does not match expected type $type" if defined $type && $return ne $type;
 		lower_call $functions, $var_ty, $var_off, $name, $args;
+		return $return;
 	} else {
 		fail "unsupported expression kind '$kind'";
 	}
+
+	fail "expression has unknown type";
 }
 
 $_ = do {
@@ -289,12 +301,32 @@ while (s/(?:\n|^)fn_def (\w+) (\S+)([^\n]*)\n((?:\t[^\n]+(\n|$))*)//s) {
 
 	assert_signatures_match($previous_declaration, $functions{$name});
 
+	my @deferred;
+
 	# Lower function
 	my $frame_size = alloc "reset";
 	say "function $name $frame_size $return$params";
 	for (@statements) {
 		if (/^expression \{(\w+) ([^\}]*)\}$/) {
 			lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
+		} elsif (/^end$/) {
+			say (pop @deferred);
+		} elsif (/^while \{(\w+) ([^\}]*)\}$/) {
+			my $start_label = namefor "WHILE_START";
+			my $end_label = namefor "WHILE_END";
+			push @deferred, "\tgoto $start_label\n\tlabel $end_label";
+			say "\tlabel $start_label";
+			my $type = lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
+			say "\tbranch if false " . typeof($type) . " $end_label";
+		} elsif (/^if \{(\w+) ([^\}]*)\}$/) {
+			my $start_label = namefor "IF_START";
+			my $else_label = namefor "IF_ELSE";
+			my $end_label = namefor "IF_END";
+			push @deferred, "\tlabel $end_label";
+			push @deferred, "\tgoto $end_label\n\tlabel $else_label";
+			say "\tlabel $start_label";
+			my $type = lower_expression \%functions, \%var_ty, \%var_off, $1, $2;
+			say "\tbranch if false " . typeof($type) . " $else_label";
 		} elsif (/^assign (\w+) \{(\w+) ([^\}]*)\}$/) {
 			my $dest = $1;
 			fail "assigning to undefined variable $dest" unless defined $var_ty{$dest};

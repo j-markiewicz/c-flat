@@ -79,6 +79,27 @@ function gen_return {
 	echo $'\t'"ret"
 }
 
+# label NAME
+function label {
+	echo ".L$1:"
+}
+
+# goto NAME
+function goto {
+	echo $'\t'"jmp .L$1"
+}
+
+# branch if TRUE/FALSE TYPE NAME
+function branch {
+	echo $'\t'"test${suffix[$2]} %${ret_reg[$2]}, %${ret_reg[$2]}"
+
+	if [ "$1" = "true" ]; then
+		echo $'\t'"jnz .L$3"
+	else
+		echo $'\t'"jz .L$3"
+	fi
+}
+
 # get REGISTER const TYPE VALUE
 function get_const {
 	if [ "$1" = "a" ]; then
@@ -309,6 +330,12 @@ while read -r line; do
 		gen_return
 	elif [[ "$line" =~ ^abort$ ]]; then
 		abort
+	elif [[ "$line" =~ ^label\ ([[:graph:]]+)$ ]]; then
+		label "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^goto\ ([[:graph:]]+)$ ]]; then
+		goto "${BASH_REMATCH[@]:1}"
+	elif [[ "$line" =~ ^branch\ if\ (true|false)\ ([[:graph:]]+)\ ([[:graph:]]+)$ ]]; then
+		branch "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^get\ ([[:graph:]]+)\ const\ ([[:graph:]]+)\ ([[:digit:]]+)$ ]]; then
 		get_const "${BASH_REMATCH[@]:1}"
 	elif [[ "$line" =~ ^get\ ([[:graph:]]+)\ symbol\ ([[:graph:]]+)$ ]]; then

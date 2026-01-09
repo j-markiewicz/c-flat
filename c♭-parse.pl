@@ -120,38 +120,71 @@ sub parse_block {
 	}
 }
 
-# Parse a statement (ending with a ;) from $_
-# Returns the parsed statement as a string
+# Parse a statement (usually ending with a ;) from $_
+# Returns the parsed statement(s) as an array
+# Multiple statements may be returned in the case of block-containing
+# statements, such as while
 sub parse_statement {
-	my $statement = "";
+	my @statements;
 
 	if (s/^keyword return\n(?=punctuation ;\n)//) {
-		$statement = "return void";
+		$statements[0] = "return void";
 	} elsif (s/^keyword return\n//) {
-		$statement = "return " . parse_expression;
+		$statements[0] = "return " . parse_expression;
+	} elsif (s/^keyword while\npunctuation \(\n//) {
+		push @statements, "while " . parse_expression;
+		fail ")" unless s/^punctuation \)\n//;
+		my $block = parse_block;
+		push @statements, @$block if defined $block;
+		push @statements, "end";
+		return @statements;
+	} elsif (s/^keyword if\npunctuation \(\n//) {
+		push @statements, "if " . parse_expression;
+		fail ")" unless s/^punctuation \)\n//;
+		my $block = parse_block;
+		push @statements, @$block if defined $block;
+		push @statements, "end";
+
+		my $ends = 1;
+		while (s/^keyword else\nkeyword if\npunctuation \(\n//) {
+			$ends += 1;
+			push @statements, "if " . parse_expression;
+			fail ")" unless s/^punctuation \)\n//;
+			$block = parse_block;
+			push @statements, @$block if defined $block;
+			push @statements, "end";
+		}
+
+		if (s/^keyword else\n//) {
+			$block = parse_block;
+			push @statements, @$block if defined $block;
+		}
+
+		for (1..$ends) { push @statements, "end"; }
+		return @statements;
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation =\n//) {
-		$statement = "variable $1 $2 " . parse_expression;
+		$statements[0] = "variable $1 $2 " . parse_expression;
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation \[\nconstant (\d+)\npunctuation \]\n//) {
-		$statement = "array $1 $2 $3";
+		$statements[0] = "array $1 $2 $3";
 	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\n//) {
-		$statement = "variable $1 $2 undefined";
+		$statements[0] = "variable $1 $2 undefined";
 	} elsif (s/^identifier (\w+)\npunctuation =\n//) {
-		$statement = "assign $1 " . parse_expression;
+		$statements[0] = "assign $1 " . parse_expression;
 	} elsif (s/^punctuation \*\nidentifier (\w+)\npunctuation =\n//) {
-		$statement = "deref_assign $1 (constant 0) " . parse_expression;
+		$statements[0] = "deref_assign $1 (constant 0) " . parse_expression;
 	} elsif (s/^identifier (\w+)\npunctuation \[\n//) {
-		$statement = "deref_assign $1 " . parse_value . " ";
+		$statements[0] = "deref_assign $1 " . parse_value . " ";
 		fail "]" unless s/^punctuation \]\npunctuation =\n//;
-		$statement .= parse_expression;
+		$statements[0] .= parse_expression;
 	} else {
-		$statement = "expression " . parse_expression;
+		$statements[0] = "expression " . parse_expression;
 	}
 
 	if (not s/^punctuation ;\n//) {
 		fail ";";
 	}
 
-	return $statement;
+	return @statements;
 }
 
 # Parse a value (constant, string, or identifier) from $_
