@@ -10,6 +10,7 @@ gccroot=$(find /usr/lib/gcc/x86_64-linux-gnu/ -maxdepth 1 -mindepth 1 2>/dev/nul
 print_dir=false
 assemble=true
 link=true
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
 
 # Fail compilation
 function fail {
@@ -89,6 +90,7 @@ log 6 "gccroot=$gccroot"
 log 6 "print_dir=$print_dir"
 log 6 "assemble=$assemble"
 log 6 "link=$link"
+log 6 "here=$here"
 
 if [[ $# -eq 0 ]]; then
 	echo "c♭: compiler error: no input files" >&2
@@ -125,22 +127,22 @@ for source in "$@"; do
 	log_file 5 "$source"
 
 	log 2 "    lexing $source"
-    perl c♭/lex.pl < "$source" > "$workdir/$file.tokenstream" || fail
+    perl "-I$here/c♭/" "$here/c♭/lex.pl" < "$source" > "$workdir/$file.tokenstream" || fail
 	log 5 "    output ($workdir/$file.tokenstream):"
 	log_file 5 "$workdir/$file.tokenstream"
 
 	log 2 "    parsing $source"
-    perl c♭/parse.pl < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
+    perl "-I$here/c♭/" "$here/c♭/parse.pl" < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
 	log 5 "    output ($workdir/$file.ast):"
 	log_file 5 "$workdir/$file.ast"
 
 	log 2 "    lowering $source"
-    perl c♭/lower.pl < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
+    perl "-I$here/c♭/" "$here/c♭/lower.pl" < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
 	log 5 "    output ($workdir/$file.ir):"
 	log_file 5 "$workdir/$file.ir"
 
 	log 2 "    codegenning $source"
-    bash c♭/codegen.sh < "$workdir/$file.ir" > "$workdir/$file.S" || fail
+    bash "$here/c♭/codegen.sh" < "$workdir/$file.ir" > "$workdir/$file.S" || fail
 	log 5 "    output ($workdir/$file.S):"
 	log_file 5 "$workdir/$file.S"
 

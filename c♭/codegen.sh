@@ -2,10 +2,12 @@
 
 set -eufo pipefail
 
-. c♭/codegen-definitions.sh
-. c♭/codegen-general.sh
-. c♭/codegen-unary.sh
-. c♭/codegen-binary.sh
+here=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &> /dev/null && pwd)
+
+. "$here/codegen-definitions.sh"
+. "$here/codegen-general.sh"
+. "$here/codegen-unary.sh"
+. "$here/codegen-binary.sh"
 
 while read -r line; do
 	if [[ "$line" =~ ^symbol\ ([[:graph:]]+)$ ]]; then
