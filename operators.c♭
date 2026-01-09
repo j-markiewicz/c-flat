@@ -1,84 +1,61 @@
 int printf(char* fmt, int d);
-int puts(char* s);
-char* strcpy(char* dest, char* src);
 
 int main() {
-	char string[5];
-	strcpy(string, "Test");
-	puts(string);
-
-	char character = *string;
-	char** pointer = &string;
-	strcpy(string, "test");
-	puts(string);
-
-	*string = character;
-	string[1] = 'E';
-	string[2] = 'S';
-	string[3] = character;
-	puts(string);
-
-	char* other_string = "ABCD";
-	string[0] = *other_string;
-	long index = 1;
-	string[1] = other_string[index];
-	index = index + 1;
-	string[index] = other_string[index];
-	index = index + 1;
-	string[index] = other_string[3];
-	puts(string);
-
 	int x = 6;
+	int y = 10;
+
+	printf("x = %d\n", x);
+	printf("y = %d\n", y);
+
 	int a = !x;
 	int b = ~x;
 	int c = -x;
 	int d = +x;
 
-	printf("x = %d\n", x);
 	printf("!x = %d\n", a);
 	printf("~x = %d\n", b);
 	printf("-x = %d\n", c);
 	printf("+x = %d\n", d);
 
-	int e = x < 10;
-	int f = x <= 10;
-	int g = x == 10;
-	int h = x >= 10;
-	int i = x > 10;
-	int j = x != 10;
-	int k = x && 10;
-	int l = x || 10;
+	int e = x < y;
+	int f = x <= y;
+	int g = x == y;
+	int h = x >= y;
+	int i = x > y;
+	int j = x != y;
+	int k = x && y;
+	int l = x || y;
 
-	printf("x < 10 = %d\n", e);
-	printf("x <= 10 = %d\n", f);
-	printf("x == 10 = %d\n", g);
-	printf("x >= 10 = %d\n", h);
-	printf("x > 10 = %d\n", i);
-	printf("x != 10 = %d\n", j);
-	printf("x && 10 = %d\n", k);
-	printf("x || 10 = %d\n", l);
+	printf("x < y = %d\n", e);
+	printf("x <= y = %d\n", f);
+	printf("x == y = %d\n", g);
+	printf("x >= y = %d\n", h);
+	printf("x > y = %d\n", i);
+	printf("x != y = %d\n", j);
+	printf("x && y = %d\n", k);
+	printf("x || y = %d\n", l);
 
-	int m = x + 10;
-	int n = x - 10;
-	int o = x * 10;
-	int p = x / 10;
-	int q = x % 10;
+	int m = x + y;
+	int n = x - y;
+	int o = x * y;
+	int p = x / y;
+	int q = x % y;
 
-	printf("x + 10 = %d\n", m);
-	printf("x - 10 = %d\n", n);
-	printf("x * 10 = %d\n", o);
-	printf("x / 10 = %d\n", p);
-	printf("x %% 10 = %d\n", q);
+	printf("x + y = %d\n", m);
+	printf("x - y = %d\n", n);
+	printf("x * y = %d\n", o);
+	printf("x / y = %d\n", p);
+	printf("x %% y = %d\n", q);
 
-	int r = x & 10;
-	int s = x | 10;
-	int t = x >> 2;
-	int u = x << 2;
+	int r = x & y;
+	int s = x | y;
+	int t = x >> y;
+	int u = x << y;
 
-	printf("x & 10 = %d\n", r);
-	printf("x | 10 = %d\n", s);
-	printf("x >> 10 = %d\n", t);
-	printf("x << 10 = %d\n", u);
+	printf("x & y = %d\n", r);
+	printf("x | y = %d\n", s);
+	printf("x >> y = %d\n", t);
+	printf("x << y = %d\n", u);
 
 	return 0;
 }

@@ -22,12 +22,6 @@
 // 	return 0;
 // }
 
-//* Void variables
-// void get_nothing() {}
-// int main() {
-// 	void nothing = get_nothing();
-// }
-
 //* Return/variable type mismatch
 // int one_int() {
 // 	return 1;
@@ -57,6 +51,12 @@
 
 //* All parsing errors
 // function 123(int variable = 1 + 2);
+
+//* Void variables
+// void get_nothing() {}
+// int main() {
+// 	void nothing = get_nothing();
+// }
 
 //! Some errors are handled in the assembler or linker
 

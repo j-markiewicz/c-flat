@@ -18,7 +18,7 @@ declare -rA arg_regs=(
 declare -rA ret_reg=([char]=al [short]=ax [int]=eax [long]=rax [ptr]=rax)
 
 # Second operand register for binary operations
-declare -rA sec_reg=([char]=dl [short]=dx [int]=edx [long]=rdx [ptr]=rdx)
+declare -rA sec_reg=([char]=cl [short]=cx [int]=ecx [long]=rcx [ptr]=rcx)
 
 # Scratch register names by type
 declare -rA scratch=([char]=r11b [short]=r11w [int]=r11d [long]=r11 [ptr]=r11)
@@ -305,18 +305,12 @@ function cmp {
 
 # shl TYPE
 function shl {
-	echo $'\t'"mov${suffix[char]} %cl, %${scratch[char]}"
-	echo $'\t'"mov${suffix[char]} %${sec_reg[char]}, %cl"
-	echo $'\t'"sal${suffix[$1]} %cl, %${ret_reg[$1]}"
-	echo $'\t'"mov${suffix[char]} %${scratch[char]}, %cl"
+	echo $'\t'"sal${suffix[$1]} %${sec_reg[char]}, %${ret_reg[$1]}"
 }
 
 # shr TYPE
 function shr {
-	echo $'\t'"mov${suffix[char]} %cl, %${scratch[char]}"
-	echo $'\t'"mov${suffix[char]} %${sec_reg[char]}, %cl"
-	echo $'\t'"sar${suffix[$1]} %cl, %${ret_reg[$1]}"
-	echo $'\t'"mov${suffix[char]} %${scratch[char]}, %cl"
+	echo $'\t'"sar${suffix[$1]} %${sec_reg[char]}, %${ret_reg[$1]}"
 }
 
 while read -r line; do
@@ -356,16 +350,6 @@ while read -r line; do
 		${BASH_REMATCH[1]} "${BASH_REMATCH[@]:2}"
 	elif [[ "$line" =~ ^call\ ([[:graph:]]+)((\ [[:graph:]]+\ (symbol|const|var)\ [[:graph:]]+)*)$ ]]; then
 		call "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^add\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
-		add "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^sub\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
-		sub "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^mul\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
-		mul "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^div\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
-		div "${BASH_REMATCH[@]:1}"
-	elif [[ "$line" =~ ^rem\ ([[:graph:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)\ ([[:digit:]]+)$ ]]; then
-		rem "${BASH_REMATCH[@]:1}"
 	else
 		fail "$line"
 	fi

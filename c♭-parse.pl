@@ -162,11 +162,11 @@ sub parse_statement {
 
 		for (1..$ends) { push @statements, "end"; }
 		return @statements;
-	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation =\n//) {
+	} elsif (s/^type ([\S]+)\nidentifier (\w+)\npunctuation =\n//) {
 		$statements[0] = "variable $1 $2 " . parse_expression;
-	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\npunctuation \[\nconstant (\d+)\npunctuation \]\n//) {
+	} elsif (s/^type ([\S]+)\nidentifier (\w+)\npunctuation \[\nconstant (\d+)\npunctuation \]\n//) {
 		$statements[0] = "array $1 $2 $3";
-	} elsif (s/^type ([\w\*]+)\nidentifier (\w+)\n//) {
+	} elsif (s/^type ([\S]+)\nidentifier (\w+)\n//) {
 		$statements[0] = "variable $1 $2 undefined";
 	} elsif (s/^identifier (\w+)\npunctuation =\n//) {
 		$statements[0] = "assign $1 " . parse_expression;
@@ -230,7 +230,6 @@ sub parse_expression {
 		'~' => 'inv',
 		'-' => 'neg',
 		'+' => 'pos',
-		'*' => 'deref',
 		'&' => 'addr'
 	);
 

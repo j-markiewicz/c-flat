@@ -1,4 +1,6 @@
 int printf(char* fmt, char c, char* p, char** p2);
+int puts(char* s);
+char* strcpy(char* dest, char* src);
 
 int main() {
 	char c = 'x';
@@ -9,6 +11,34 @@ int main() {
 
 	*p = 'y';
 	printf("The character '%c' is at %p, and that variable is at %p\n", c, p, p2);
+
+	p[0] = 'z'; // equivalent to *p = ...
+	printf("The character '%c' is at %p, and that variable is at %p\n", c, p, p2);
+
+	char string[5];
+	strcpy(string, "Test");
+	puts(string);
+
+	char character = *string;
+	char** pointer = &string;
+	strcpy(string, "test");
+	puts(string);
+
+	*string = character;
+	string[1] = 'E';
+	string[2] = 'S';
+	string[3] = character;
+	puts(string);
+
+	char* other_string = "ABCD";
+	string[0] = *other_string;
+	long index = 1;
+	string[1] = other_string[index];
+	index = index + 1;
+	string[index] = other_string[index];
+	index = index + 1;
+	string[index] = other_string[3];
+	puts(string);
 
 	return 0;
 }
