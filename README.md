@@ -90,7 +90,7 @@ Within function definitions, the following statements are supported:
 
 c♭ generates code for x86-64 (aka x64/AMD64/Intel 64) using the SYS V ABI.
 
-c♭ requires recent versions of: Bash, Perl, binutils (as and ld) or gcc (with `--use-gcc`), coreutils (mktemp, sort, head, base64, and tr), find, and util-linux-ng's getopt.
+c♭ requires recent versions of: Bash, Perl, binutils (as and ld) or gcc (with `--use-gcc`), coreutils (nproc, mktemp, sort, head, base64, and tr), find, and util-linux-ng's getopt.
 
 Unless `--use-gcc` is passed, GCC C runtime libraries are required.
 By default, the standard GCC installation directories are searched, but this can be overridden with `--libroot` and `--gccroot` (see the `--help` output).

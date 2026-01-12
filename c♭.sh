@@ -5,6 +5,7 @@ set -eufo pipefail
 verbose=0
 use_gcc=false
 output='a.out'
+jobs=$(nproc || echo '1')
 libroot='/usr/lib/x86_64-linux-gnu'
 gccroot=$(find /usr/lib/gcc/x86_64-linux-gnu/ -maxdepth 1 -mindepth 1 2>/dev/null | sort -rV | head -n 1 || echo '')
 print_dir=false
@@ -32,12 +33,50 @@ function log_file {
 	fi
 }
 
+# Compile $1 in $2 (including assembly unless disabled or gcc is used, excluding linking)
+function compile {
+	source="$1"
+	workdir="$2"
+
+	log 1 "c♭: compiling $source"
+	file=$(printf "$source" | base64 -w0 | tr '/+' '_-' | tr -d '=')
+	log 6 "    file=$file"
+	log 5 "    input ($source):"
+	log_file 5 "$source"
+
+	log 2 "    lexing $source"
+	perl "-I$here/c♭/" "$here/c♭/lex.pl" < "$source" > "$workdir/$file.tokenstream" || fail
+	log 5 "    output ($workdir/$file.tokenstream):"
+	log_file 5 "$workdir/$file.tokenstream"
+
+	log 2 "    parsing $source"
+	perl "-I$here/c♭/" "$here/c♭/parse.pl" < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
+	log 5 "    output ($workdir/$file.ast):"
+	log_file 5 "$workdir/$file.ast"
+
+	log 2 "    lowering $source"
+	perl "-I$here/c♭/" "$here/c♭/lower.pl" < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
+	log 5 "    output ($workdir/$file.ir):"
+	log_file 5 "$workdir/$file.ir"
+
+	log 2 "    codegenning $source"
+	bash "$here/c♭/codegen.sh" < "$workdir/$file.ir" > "$workdir/$file.S" || fail
+	log 5 "    output ($workdir/$file.S):"
+	log_file 5 "$workdir/$file.S"
+
+	if $assemble && ! $use_gcc; then
+		log 2 "    assembling $source"
+		as --64 -O3 "$workdir/$file.S" -o "$workdir/$file.o" || fail
+		log 5 "    output ($workdir/$file.o)"
+	fi
+}
+
 if [[ $(getopt -T > /dev/null; echo "$?") -ne 4 ]]; then
 	echo 'c♭: compiler error: non-linux `getopt` detected' >&2
 	fail
 fi
 
-args=$(getopt -n 'c♭' -l help,verbose,output:,no-assemble,no-link,print-dir,use-gcc,libroot:,gccroot: -o 'hvo:Scp' -- "$@") || fail
+args=$(getopt -n 'c♭' -l help,verbose,output:,jobs:,no-assemble,no-link,print-dir,use-gcc,libroot:,gccroot: -o 'hvo:j:Scp' -- "$@") || fail
 eval "set -- ${args}"
 
 while [[ $# -gt 0 ]]; do
@@ -57,6 +96,9 @@ while [[ $# -gt 0 ]]; do
 			echo "      -v, --verbose         Print extra information while compiling"
 			echo "                            (more for each time this is passed)"
 			echo "      -o, --output <file>   Place the output into <file> (default $output)"
+			echo "      -j, --jobs <n>        Compile <n> files concurrently"
+			echo "                            (default is the number returned by nproc)"
+			echo "                            (currently $jobs)"
 			echo "      -S, --no-assemble     Compile only; do not assemble or link"
 			echo "      -c, --no-link         Compile and assemble, but do not link"
 			echo "      -p, --print-dir       Print the temporary working directory"
@@ -71,6 +113,7 @@ while [[ $# -gt 0 ]]; do
 			exit 0;;
 		-v | --verbose) (( verbose += 1 )); shift;;
 		-o | --output) output="$2"; shift 2;;
+		-j | --jobs) jobs="$2"; shift 2;;
 		-S | --no-assemble) assemble=false; link=false; shift;;
 		-c | --no-link) link=false; shift;;
 		-p | --print-dir) print_dir=true; shift;;
@@ -85,6 +128,7 @@ done
 log 6 "verbose=$verbose"
 log 6 "use_gcc=$use_gcc"
 log 6 "output=$output"
+log 6 "jobs=$jobs"
 log 6 "libroot=$libroot"
 log 6 "gccroot=$gccroot"
 log 6 "print_dir=$print_dir"
@@ -119,39 +163,27 @@ else
 	trap "rm -r $workdir" EXIT
 fi
 
+workers=()
 for source in "$@"; do
-	log 1 "c♭: compiling $source"
-	file=$(printf "$source" | base64 -w0 | tr '/+' '_-' | tr -d '=')
-	log 6 "    file=$file"
-	log 5 "    input ($source):"
-	log_file 5 "$source"
+	if [[ $jobs -ne 0 && ${#workers[@]} -ge $jobs ]]; then
+		log 6 "waiting on one of ${#workers[*]} workers: ${workers[*]}"
+		wait -np finished "${workers[@]}"
 
-	log 2 "    lexing $source"
-    perl "-I$here/c♭/" "$here/c♭/lex.pl" < "$source" > "$workdir/$file.tokenstream" || fail
-	log 5 "    output ($workdir/$file.tokenstream):"
-	log_file 5 "$workdir/$file.tokenstream"
-
-	log 2 "    parsing $source"
-    perl "-I$here/c♭/" "$here/c♭/parse.pl" < "$workdir/$file.tokenstream" > "$workdir/$file.ast" || fail
-	log 5 "    output ($workdir/$file.ast):"
-	log_file 5 "$workdir/$file.ast"
-
-	log 2 "    lowering $source"
-    perl "-I$here/c♭/" "$here/c♭/lower.pl" < "$workdir/$file.ast" > "$workdir/$file.ir" || fail
-	log 5 "    output ($workdir/$file.ir):"
-	log_file 5 "$workdir/$file.ir"
-
-	log 2 "    codegenning $source"
-    bash "$here/c♭/codegen.sh" < "$workdir/$file.ir" > "$workdir/$file.S" || fail
-	log 5 "    output ($workdir/$file.S):"
-	log_file 5 "$workdir/$file.S"
-
-	if $assemble && ! $use_gcc; then
-		log 2 "    assembling $source"
-		as --64 -O3 "$workdir/$file.S" -o "$workdir/$file.o" || fail
-		log 5 "    output ($workdir/$file.o)"
+		remaining=()
+		for worker in "${workers[@]}"; do
+			if [[ $worker -ne $finished ]]; then
+				remaining+=("$worker")
+			fi
+		done
+		workers=("${remaining[@]}")
 	fi
+
+	compile "$source" "$workdir" &
+	workers+=("$!")
 done
+
+log 6 "waiting on remaining ${#workers[*]} workers: ${workers[*]}"
+wait "${workers[@]}"
 
 if $use_gcc; then
 	log 2 "c♭: assembling and linking"
